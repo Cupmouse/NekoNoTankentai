@@ -6,13 +6,10 @@
     <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css"
           integrity="sha384-nn4HPE8lTHyVtfCBi5yW9d20FjT8BJwUXyWZT9InLYax14RDjBj46LmSztkmNP9w" crossorigin="anonymous">
     <link rel="stylesheet" href="./css/font-awesome.min.css">
+    <script type="application/javascript" src="js/Chart.min.js"></script>
     <style>
         body {
-            margin: 1.5em;
-        }
-
-        #title {
-            font-size: 2.2em;
+            margin: 1.5em 3em;
         }
 
         #loading {
@@ -25,13 +22,45 @@
             background-color: white;
         }
 
+        #title {
+            font-size: 2.15em;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        #title:hover {
+            color: grey;
+        }
+
+        #menu {
+            display: inline-block;
+            width: 0;
+        }
+
+        #mini-statistics {
+            /*border: solid 1px lightgray;*/
+            overflow: hidden;
+
+            font-size: 0.8em;
+        }
+
+        #search-box {
+            margin: 1em 0;
+        }
+
+        .text-selectable {
+            /* Enable text selection */
+            -moz-user-select: text;
+            -ms-user-select: text;
+            -khtml-user-select: auto;
+            -webkit-user-select: auto;
+            -webkit-touch-callout: default;
+        }
+
+
         /*
          Home view
           */
-
-        #search-box {
-
-        }
 
         .pure-form .input-text-highlight-red {
             box-shadow: 0px 0px 6px red;
@@ -41,50 +70,189 @@
         .input-text-highlight-green {
 
         }
+
+        /*
+        View Common
+        */
+
+        h1 {
+            margin-top: 0;
+        }
+
+        .mini-caption {
+            color: gray;
+            font-size: 0.7em;
+            display: block;
+
+            /* Disable text selection */
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -khtml-user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .captioned-text {
+            padding-left: 1em;
+            word-break: break-all;
+            display: block;
+        }
+
+        .tx-list-element {
+            padding-left: 0.5em;
+        }
+
+        .tx-sending {
+            border-left: solid 10px #fde231;
+        }
+
+        .tx-list-title {
+            font-size: 1em;
+            font-weight: bold;
+        }
+        
+        /*
+        Blocks View
+         */
+
+        .block-list-element {
+            display: block;
+            text-align: center;
+        }
+
+        .block-time {
+            display: inline-block;
+            margin-right: 1.5em;
+            text-align: center;
+        }
+
+        .block-time-clock {
+            display: block;
+            height: 100px;
+            width: 100px;
+        }
+
+        .block-about {
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
 <header>
-<div class="pure-g">
-<div id="title" class="pure-u-1-4">
-    🚩ねこの探検隊
-</div>
-<nav id="menu" class="pure-u-3-4">
-    <ul>
-        <li>
-            <a onclick="loadViewHome()"><i class="fa fa-home" aria-hidden="true"></i> Home</a>
-        </li>
-        <li>
-            <i class="fa fa-search" aria-hidden="true"></i> Search (Not yet)
-        </li>
-        <li>
-            <i class="fa fa-bar-chart" aria-hidden="true"></i> Statistics (Not yet)
-        </li>
-    </ul>
-</nav>
-<div class="pure-u-1">
-    <form id="search-form" class="pure-form">
-        <input type="text" id="search-box" class="pure-input-1" placeholder="Search">
-    </form>
-</div>
-<div class="pure-u-1">
-    <span id="search-hint">No search results</span>
-</div>
-</div>
+    <div class="pure-g">
+        <div class="pure-u-3-4">
+            <a id="title" href="#" onclick="loadViewHome()">🚩ねこの探検隊</a>
+
+            <div id="menu" class="pure-menu pure-menu-horizontal">
+            <nav>
+                <ul class="pure-menu-list">
+                    <li class="pure-menu-item">
+                        <a href="#" onclick="loadViewHome()" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
+                    </li>
+                    <li class="pure-menu-item">
+                        <a href="#" onclick="loadViewTransactionList()" class="pure-menu-link"><i class="fa fa-exchange" aria-hidden="true"></i> Transactions</a>
+                    </li>
+                    <li class="pure-menu-item pure-menu-disabled">
+                        <i class="fa fa-bar-chart" aria-hidden="true"></i> Statistics
+                    </li>
+                </ul>
+            </nav>
+            </div>
+        </div>
+        <div class="pure-u-1-4">
+            <div id="mini-statistics" class="pure-g text-selectable">
+                <div class="pure-u-1-3">
+                    # 1000000
+                </div>
+                <div class="pure-u-1-3">
+                    Diff 150T
+                </div>
+                <div class="pure-u-1-3">
+                    ¥ 1000
+                </div>
+            </div>
+        </div>
+        <div class="pure-u-1">
+            <form id="search-form" class="pure-form">
+                <input type="text" id="search-box" class="pure-input-1" placeholder="Search">
+            </form>
+        </div>
+        <div class="pure-u-1">
+            <span id="search-hint">No search results</span>
+        </div>
+    </div>
 </header>
 <div id="contents-wrapper">
-    <!-- Loading screen appears only on page loading -->
+    <!-- Loading screen appears only on view loading -->
     <div id="loading">
         LOADING BABY
     </div>
-    <div class="pure-g">
-        <!-- Inserts an contents in this div tag using Ajax -->
-        <div id="contents"></div>
+    <!-- Inserts an contents in this div tag using Ajax -->
+    <div id="contents">
+        <div class="pure-g">
+            <div class="pure-u-1-4">
+                <span class="block-list-element"><i class="fa fa-arrow-up" aria-hidden="true"></i></span>
+                <div>
+                    <span class="block-list-element">1</span>
+                    <span class="block-list-element">2</span>
+                    <span class="block-list-element">3</span>
+                    <span class="block-list-element">4</span>
+                    <span class="block-list-element">5</span>
+                    <span class="block-list-element">6</span>
+                    <span class="block-list-element">7</span>
+                    <span class="block-list-element">8</span>
+                    <span class="block-list-element">9</span>
+                    <span class="block-list-element">10</span>
+                    <span class="block-list-element">11</span>
+                </div>
+                <span class="block-list-element"><i class="fa fa-arrow-down" aria-hidden="true"></i></span>
+            </div>
+            <div class="pure-u-3-4">
+                <h1>Block #10000000</h1>
+                <div >
+                    <div class="block-time">
+                        <canvas id="temp" class="block-time-clock" height="200px" width="200px"></canvas>
+                    </div>
+                    <div class="block-about">
+                        <span class="mini-caption">Hash</span>
+                        <span class="captioned-text">${block_hash}</span>
+                        <span class="mini-caption">Mined by</span>
+                        <span class="captioned-text">${block_minedby}</span>
+
+                        <details>
+                            <summary>Click here for more info</summary>
+
+                            <div class="block-info">
+                                <span class="mini-caption">Difficulty</span>
+                                <span class="captioned-text">${block_difficulty}</span>
+                                <span class="mini-caption">Gas</span>
+                                <span class="captioned-text">${block_gasused}/${block_gaslimit}</span>
+                                <span class="mini-caption">Nonce</span>
+                                <span class="captioned-text">${block_nonce}</span>
+                                <span class="mini-caption">sha3 Uncles</span>
+                                <span class="captioned-text">${block_sha3_uncles}</span>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+                <div>
+                    <h2>${uncle_count} Uncle(s)</h2>
+                </div>
+                <div>
+                    <h2>${transaction_count} Transaction(s)</h2>
+
+                    <div class="tx-list-element tx-sending">
+                        <span class="tx-list-title"><span class="text-unselectable">Sending </span>${tx_sending_amount}<span class="text-unselectable"> ${tx_unit}</span></span><br>
+                        ${tx_sending_from}<span class="text-selectable"> <i class="fa fa-arrow-right" aria-hidden="true"></i> </span>${tx_sending_to}
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
 <script type="application/javascript">
-
     let div_contents = document.getElementById('contents');
     let search_box = document.getElementById('search-box');
     let search_hint = document.getElementById('search-hint');
@@ -135,7 +303,7 @@
         return false;
     });
 
-    loadViewHome();
+//    loadViewHome();
 
     function isAddress(addr) {
         // TODO Upper case lower case error check
@@ -175,6 +343,80 @@
     }
     function loadingEnd() {
         document.getElementById('loading').style.display = 'none';
+    }
+
+    let cc = document.getElementById('temp').getContext('2d');
+    drawClock(cc, 1509680069);
+
+    function drawClock(context, unixEpoch) {
+        let date = new Date(unixEpoch * 1000);
+        let seconds = date.getUTCSeconds();
+        let minutes = date.getUTCMinutes();
+        let hours = date.getUTCHours() % 12;
+
+        _drawClock(context, hours, minutes, seconds);
+    }
+
+    /**
+     * Perform an drawing of current time to the context
+     * @param context
+     */
+    function drawClockNow(context) {
+        let date = new Date();
+        let seconds = date.getUTCSeconds();
+        let minutes = date.getUTCMinutes();
+        let hours = date.getUTCHours() % 12;
+
+        _drawClock(context, hours, minutes, seconds);
+    }
+
+    function _drawClock(context, hours, minutes, seconds) {
+        let stheta = (seconds * 2 * Math.PI) / 60;
+        let mtheta = ((minutes + seconds / 60) * 2 * Math.PI) / 60;
+        let htheta = ((hours + minutes / 60 + seconds / (60 * 60)) * 2 * Math.PI) / 12;
+
+        let ssin = Math.sin(stheta);
+        let scos = Math.cos(stheta);
+        let msin = Math.sin(mtheta);
+        let mcos = Math.cos(mtheta);
+        let hsin = Math.sin(htheta);
+        let hcos = Math.cos(htheta);
+
+        // クリア
+        context.clearRect(0, 0, 200, 200);
+
+        // 外枠
+        context.beginPath();
+        context.lineWidth = 2;
+        context.arc(100, 100, 98, 0, 2 * Math.PI);
+        context.closePath();
+        context.stroke();
+
+        context.font = 'bold 20px sans-serif';
+        context.textAlign = "center";
+        context.textBaseline = "bottom";
+        context.fillText('UTC', 100, 77);
+
+        // 秒針
+        context.beginPath();
+        context.lineWidth = 1;
+        context.moveTo(100 - 15 * ssin, 100 + 15 * scos);
+        context.lineTo(100 + 80 * ssin, 100 - 80 * scos);
+        context.stroke();
+
+        // 長針
+        context.beginPath();
+        context.lineWidth = 3;
+        context.moveTo(100 - 5 * msin, 100 + 5 * mcos);
+        context.lineTo(100 + 90 * msin, 100 - 90 * mcos);
+        context.stroke();
+
+        // 短針
+        context.beginPath();
+        context.lineWidth = 6;
+        context.moveTo(100 - 5 * hsin, 100 + 5 * hcos);
+        context.lineTo(100 + 60 * hsin, 100 - 60 * hcos);
+        context.stroke();
     }
 </script>
 
