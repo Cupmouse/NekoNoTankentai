@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nekonium Block Explorer</title>
+    <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css"
+          integrity="sha384-nn4HPE8lTHyVtfCBi5yW9d20FjT8BJwUXyWZT9InLYax14RDjBj46LmSztkmNP9w" crossorigin="anonymous">
+    <link rel="stylesheet" href="./css/font-awesome.min.css">
+    <style>
+        body {
+            margin: 1.5em;
+        }
+
+        #title {
+            font-size: 2.2em;
+        }
+
+        #loading {
+            position: relative;
+            height: 100%;
+            width: 100%;
+            top: 0;
+            left: 0;
+
+            background-color: white;
+        }
+
+        /*
+         Home view
+          */
+
+        #search-box {
+
+        }
+
+        .pure-form .input-text-highlight-red {
+            box-shadow: 0px 0px 6px red;
+            border: solid 1px red;
+        }
+
+        .input-text-highlight-green {
+
+        }
+    </style>
+</head>
+<body>
+<header>
+<div class="pure-g">
+<div id="title" class="pure-u-1-4">
+    🚩ねこの探検隊
+</div>
+<nav id="menu" class="pure-u-3-4">
+    <ul>
+        <li>
+            <a onclick="loadViewHome()"><i class="fa fa-home" aria-hidden="true"></i> Home</a>
+        </li>
+        <li>
+            <i class="fa fa-search" aria-hidden="true"></i> Search (Not yet)
+        </li>
+        <li>
+            <i class="fa fa-bar-chart" aria-hidden="true"></i> Statistics (Not yet)
+        </li>
+    </ul>
+</nav>
+<div class="pure-u-1">
+    <form id="search-form" class="pure-form">
+        <input type="text" id="search-box" class="pure-input-1" placeholder="Search">
+    </form>
+</div>
+<div class="pure-u-1">
+    <span id="search-hint">No search results</span>
+</div>
+</div>
+</header>
+<div id="contents-wrapper">
+    <!-- Loading screen appears only on page loading -->
+    <div id="loading">
+        LOADING BABY
+    </div>
+    <div class="pure-g">
+        <!-- Inserts an contents in this div tag using Ajax -->
+        <div id="contents"></div>
+    </div>
+</div>
+
+<script type="application/javascript">
+
+    let div_contents = document.getElementById('contents');
+    let search_box = document.getElementById('search-box');
+    let search_hint = document.getElementById('search-hint');
+
+    const REGEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+    const REGEX_TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
+
+    // Registering search box input event
+    search_box.addEventListener('input', function () {
+        // Gets the inputted string from the search box
+        let search_string = search_box.value;
+
+        if (search_string.length === 0) {
+            // If search word is empty string, going back to home
+        }
+
+        let search_hint_text = "No search result";
+
+        // Can be Nekonium client data format (0x prefix)
+        if (search_string.startsWith('0x')) {
+            if (search_string.length === 2 + 40 && isAddress(search_string)) {
+                // Can be an address format example:0x58a0a1d5e941bd2213a51f6362a8fc2728a16905
+                search_hint_text = 'Recognized as an address';
+            } else if (search_string.length === 2 + 64 && isTransactionId(search_string)) {
+                // Can be an TX format example:0x7ba31d707f49e0f154328e3075be0333b9a9dafaea55a67e7c2028120abc9db2
+                search_hint_text = 'Transaction id ' + search_string.toLowerCase();
+            }
+        } else if (!isNaN(search_string)) {
+            // isNaN behaves weirdly, isNaN('123abc') returns true hence it would be rejected,
+            // but isNaN(' ') and isNaN('') returns false, which we don't want.
+
+            let block_id = parseInt(search_string);
+
+            // Weird testing but it works. Do not pass when search_string is empty or just space.
+            // Only true numeric number like 10000 passes. And also block id should be equal or larger than 0.
+            if (!isNaN(block_id) && block_id >= 0) {
+                // Can be an block-id example:25000
+                search_hint_text = 'Block #' + block_id;
+            }
+        }
+
+        // Displays search hint
+        search_hint.textContent = search_hint_text;
+    });
+
+    document.getElementById('search-form').addEventListener('submit', function () {
+        alert("is it");
+        return false;
+    });
+
+    loadViewHome();
+
+    function isAddress(addr) {
+        // TODO Upper case lower case error check
+
+        return REGEX_ADDRESS.test(addr);
+    }
+
+    function isTransactionId(tx_id) {
+        return REGEX_TRANSACTION.test(tx_id);
+    }
+
+    function loadViewHome() {
+        loadingStart();
+
+        div_contents.innerHTML =
+`<div class="pure-u-1">
+    <div id="latest_updates"></div>
+</div>`;
+        // TODO Registering events
+
+        loadingEnd();
+    }
+
+    function loadViewAddress($address) {
+        loadingStart();
+
+        div_contents.innerHTML =
+            `<div class="pure-u-1">
+    <h1>Address ${address}</h1>
+</div>`;
+
+        loadingEnd();
+    }
+
+    function loadingStart() {
+        document.getElementById('loading').style.display = 'block';
+    }
+    function loadingEnd() {
+        document.getElementById('loading').style.display = 'none';
+    }
+</script>
+
+<footer>
+<div class="pure-g">
+<div class="pure-u-1-1">
+    2017 Made with ❤ by Cupmouse <a href="https://twitter.com/Cupnmouse" target="_blank"><i style="color: #1da1f2" class="fa fa-twitter" aria-hidden="true"></i></a><br>
+    <!-- Just kidding, who the hell loves code. Is it kind of a weird fetish? -->
+</div>
+</div>
+</footer>
+</body>
+</html>
