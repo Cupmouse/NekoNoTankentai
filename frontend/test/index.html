@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ws client test</title>
+</head>
+<body>
+
+<div id="text">
+
+</div>
+
+<script type="application/javascript">
+    let ws = new WebSocket('ws://localhost:8080/block-stream');
+
+    ws.onmessage = function(event) {
+        let element = document.getElementById("text");
+
+        element.insertAdjacentHTML("afterbegin", event.data + "<br>");
+    }
+
+</script>
+</body>
+</html>
