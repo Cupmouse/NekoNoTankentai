@@ -21,13 +21,14 @@ public class ExplorerBackend {
 
     public void start() throws SQLException {
         this.web3jManager = new Web3jManager();
+        // FIXME On IPC connection, quick mass data fetching like a catch up fetching cause an data corruption and stop an observer thread. maybe a web3j issue
         web3jManager.connect(Web3jManager.ConnectionType.RPC, "http://127.0.0.1:8293", false, 100);
 
-        this.web3jManager.getWeb3j().blockObservable(true).subscribe(ethBlock -> {
+        this.web3jManager.getWeb3j().blockObservable(false).subscribe(ethBlock -> {
             BlockNumberEndPoint.onNewBlock(ethBlock.getBlock());
         });
 
-        // Start blockchain to database conversion
+        // Start blockchain-to-database conversion
         this.converter = new BlockchainConverter(web3jManager);
         this.converter.init();
 
