@@ -11,7 +11,7 @@ public class Main {
 
         try {
             explorerBackend.start();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

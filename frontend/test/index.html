@@ -11,7 +11,7 @@
 </div>
 
 <script type="application/javascript">
-    let ws = new WebSocket('ws://localhost:8080/block-stream');
+    let ws = new WebSocket('ws://localhost:8080/block');
 
     ws.onmessage = function(event) {
         let element = document.getElementById("text");
