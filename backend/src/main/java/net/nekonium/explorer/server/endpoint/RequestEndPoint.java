@@ -3,7 +3,6 @@ package net.nekonium.explorer.server.endpoint;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -15,10 +14,6 @@ import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.SocketTimeoutException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,7 +25,7 @@ public class RequestEndPoint {
     private static final int THREAD_NUMBER = 2;
 
     private static ExecutorService queryExecutor;
-    private static final HashMap<String, RequestHandler> handlers = new HashMap<>();
+    private static final HashMap<String, RequestHandler<?>> handlers = new HashMap<>();
 
     public static void initQueryExecutor() {
         queryExecutor = Executors.newFixedThreadPool(THREAD_NUMBER);
@@ -69,7 +64,7 @@ public class RequestEndPoint {
     }
 
     @OnMessage
-    public void onMessage(Session session, String message) throws IOException {
+    public <T> void onMessage(Session session, String message) throws IOException {
         final JSONObject jsonObject;  // Deserialize json string client sent
         try {
             jsonObject = new JSONObject(message);
@@ -86,7 +81,7 @@ public class RequestEndPoint {
         final long requestId = jsonObject.getLong("id"); // This request's id for identification between multiple requests
         final String demand = jsonObject.getString("demand"); // This query's demand (handler name)
 
-        final RequestHandler handler = handlers.get(demand.toLowerCase());
+        final RequestHandler<T> handler = (RequestHandler<T>) handlers.get(demand.toLowerCase());
 
         if (handler == null) {
             // Requested handler is not registered
@@ -97,20 +92,13 @@ public class RequestEndPoint {
 
         /* Requested handler is registered */
 
-        final Object jsonContent; // This request's content
+        final T parameters;
 
         try {
-            if (handler.getContentType() == RequestHandler.RequestContentType.OBJECT) {
-                jsonContent = jsonObject.getJSONObject("content");
-            } else {
-                jsonContent = jsonObject.getJSONArray("content");
-            }
-        } catch (JSONException e) {
-            session.close();    // Invalid format
-            return;
-        }
-
-        if (handler.isLackingParameter(jsonContent)) {
+            parameters = handler.parseParameters(jsonObject);
+        } catch (InvalidRequestException e) {
+            ExplorerServer.getInstance().getLogger().info("Error on handling request", e);
+            // fixme you can print this exception if you like to debug
             session.close();    // Invalid content format
             return;
         }
@@ -132,7 +120,7 @@ public class RequestEndPoint {
             final Object jsonResult;
 
             try {
-                jsonResult = handler.handle(jsonContent);
+                jsonResult = handler.handle(parameters);
             } catch (InvalidRequestException e) {   // This is one special exception, don't show print error on the logger
                 /* Received request was invalid, closing the session */
                 try {
@@ -167,7 +155,7 @@ public class RequestEndPoint {
     public void onError(Session session, Throwable throwable) {
         if (throwable instanceof SocketTimeoutException) {
             // Socket timed out
-            ExplorerServer.getInstance().getLogger().error("Session timed out for {}", session.getId());
+            ExplorerServer.getInstance().getLogger().info("Session timed out for {}", session.getId());
         } else {
             ExplorerServer.getInstance().getLogger().error("An unknown error occurred", throwable);
         }

@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.sql.*;
+import java.time.ZoneId;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +46,11 @@ public class BlockchainConverter implements Runnable {
 
     @Override
     public void run() {
+        /* Check timezone this machine is in */
+        if (!ZoneId.systemDefault().equals(ZoneId.of("UTC"))) {
+            this.logger.warn("It is recommended to set timezone 'UTC'.");
+            this.logger.warn("Timestamp will be stored according to the current timezone and will not be converted when you change timezone later. (Note: It will depend on the database)");
+        }
 
         // Let's check the block number where to start fetching from
         // Using BigInteger for avoiding overflow, as go-nekonium uses an arbitrary precision integer for block number

@@ -24,7 +24,7 @@
     };
 
     ws.onopen = function () {
-        request("search", {word: "0x734a6fc85f54e7e49394788aa7b228f68dff8951"});
+        request("block", ['number', '640812']);
     };
 
     ws.onclose = function () {

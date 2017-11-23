@@ -11,24 +11,23 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-public class SearchRequestHandler implements RequestHandler {
+public class SearchRequestHandler implements RequestHandler<String> {
 
     @Override
-    public boolean isLackingParameter(Object jsonContent)  {
-        final JSONObject jsonObjectContent = (JSONObject) jsonContent;
+    public String parseParameters(JSONObject jsonObject) throws InvalidRequestException {
+        if (jsonObject.get("content") instanceof String) {
+            return jsonObject.getString("content");
+        }
 
-        return !jsonObjectContent.has("word");
+        throw new InvalidRequestException("Content must be string");
     }
 
     @Override
-    public JSONArray handle(Object jsonContent) throws Exception {
-        final JSONObject jsonObjectContent = (JSONObject) jsonContent;
+    public JSONArray handle(String searchWord) throws Exception {
         // TODO this thing is in WIP, now it's just checks if entered search word exists on the database
         // TODO maybe search a name tag of an address, a transaction and a contract, or a token name
         // TODO needs simple address or transaction format check, for saving database resources
         final JSONArray jsonArrayResult = new JSONArray();
-
-        final String searchWord = jsonObjectContent.getString("word");
 
         Connection connection = null;
 
@@ -95,10 +94,5 @@ public class SearchRequestHandler implements RequestHandler {
         }
 
         return jsonArrayResult;
-    }
-
-    @Override
-    public RequestContentType getContentType() {
-        return RequestContentType.OBJECT;
     }
 }

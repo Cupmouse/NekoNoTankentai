@@ -1,25 +1,16 @@
 package net.nekonium.explorer.server;
 
+import net.nekonium.explorer.server.handler.BlockRequestHandler;
 import org.json.JSONObject;
 
-public interface RequestHandler {
+public interface RequestHandler<T> {
 
-    boolean isLackingParameter(Object jsonContent);
+    T parseParameters(JSONObject jsonObject) throws InvalidRequestException;
 
     /**
      * Handling a request from {@link net.nekonium.explorer.server.endpoint.RequestEndPoint}
-     * @param jsonContent Request's content
-     * @return Result, {@link JSONObject} or {@link org.json.JSONArray}
+     * @param parameters Request's parsed parameters
+     * @return Result, maybe {@link JSONObject} or {@link org.json.JSONArray}
      */
-    Object handle(Object jsonContent) throws Exception;
-
-    /**
-     *
-     * @return This handler's content type either JSONObject or JSONArray
-     */
-    RequestContentType getContentType();
-
-    enum RequestContentType {
-        OBJECT, ARRAY
-    }
+    Object handle(T parameters) throws Exception;
 }
