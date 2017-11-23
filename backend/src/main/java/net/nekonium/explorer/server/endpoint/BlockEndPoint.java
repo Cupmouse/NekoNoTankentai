@@ -18,7 +18,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * 全てのトランザクションを含むブロック最新ブロックを随時送信するエンドポイントです
+ * Emits all block changes real-time with complete block information including transaction objects
  */
 @ServerEndpoint("/block")
 public class BlockEndPoint {
@@ -47,10 +47,15 @@ public class BlockEndPoint {
         jsonObject.put("hash", block.getHash());
         jsonObject.put("timestamp", block.getTimestamp());
         jsonObject.put("miner", block.getMiner());
-        jsonObject.put("sha3uncles", block.getSha3Uncles());
         jsonObject.put("nonce", block.getNonce());
         jsonObject.put("gas_used", block.getGasUsed());
         jsonObject.put("gas_limit", block.getGasUsed());
+
+        final JSONArray jsonArrayUncles = new JSONArray();
+        for (String uncleHash : block.getUncles()) {
+            jsonArrayUncles.put(uncleHash);
+        }
+        jsonObject.put("uncles", jsonArrayUncles);
 
         final JSONArray jsonArrayTransactions = new JSONArray();
         for (EthBlock.TransactionResult transactionResult : block.getTransactions()) {
@@ -67,7 +72,7 @@ public class BlockEndPoint {
             jsonArrayTransactions.put(jsonObjectTransaction);
         }
 
-        jsonObject.put("transactions", block.getSha3Uncles());
+        jsonObject.put("transactions", jsonArrayTransactions);
 
         final String message = jsonObject.toString();
 

@@ -37,8 +37,8 @@ public class ExplorerBackend {
 
         // Start websocket server
 
-        this.webSocketServer = new ExplorerServer();
-        this.webSocketServer.start(this);
+        this.webSocketServer = new ExplorerServer(this);
+        this.webSocketServer.start();
 
         // TODO needs to watch if those nasty multi threads are causing error and stopping
 

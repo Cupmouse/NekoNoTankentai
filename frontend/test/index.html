@@ -11,12 +11,24 @@
 </div>
 
 <script type="application/javascript">
-    let ws = new WebSocket('ws://localhost:8080/block');
+    let ws = new WebSocket('ws://localhost:8080/request');
 
     ws.onmessage = function(event) {
         let element = document.getElementById("text");
 
         element.insertAdjacentHTML("afterbegin", event.data + "<br>");
+    };
+
+    let requestSeqId = 0;
+
+    function request(demand, content) {
+        let wrapped = {
+            id: requestSeqId++,
+            demand: demand,
+            content: content
+        };
+
+        ws.send(wrapped);
     }
 
 </script>

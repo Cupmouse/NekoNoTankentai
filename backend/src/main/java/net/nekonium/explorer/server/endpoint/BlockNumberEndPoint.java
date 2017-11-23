@@ -12,8 +12,8 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * 最新のブロック高さを送信するエンドポイントです。
- * 高さは同じでもハッシュ値が異なる場合は再送されます
+ * Emits only recent block number real-time
+ * If block is forked and new block is broadcasted (basically when hash is different), same block number would be resent
  */
 @ServerEndpoint("/block-number")
 public class BlockNumberEndPoint {
