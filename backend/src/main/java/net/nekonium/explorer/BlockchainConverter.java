@@ -2,12 +2,14 @@ package net.nekonium.explorer;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import net.nekonium.explorer.util.IllegalBlockchainStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.response.EthBlock;
 import org.web3j.protocol.core.methods.response.Transaction;
+import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import rx.Subscription;
 import rx.functions.Action1;
 
@@ -18,10 +20,15 @@ import java.math.RoundingMode;
 import java.sql.*;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 
 import static java.sql.Statement.RETURN_GENERATED_KEYS;
 
 public class BlockchainConverter implements Runnable {
+//
+//    // transfer(address,uint256) => a9059cbb2ab09eb219583f4a59a5d0623ade346d962bcd4e46b11da047c9049b
+//    public static String KECCAK_ERC20_TRANSFER = "0xa9059cbb";
+//    public static String KECCAK_ERC20_
 
     private final Web3jManager web3jManager;
     private final DatabaseManager databaseManager;
@@ -157,7 +164,9 @@ public class BlockchainConverter implements Runnable {
      * @throws SQLException
      * @throws IOException
      */
-    private void commitBlock(Connection connection, EthBlock.Block block) throws SQLException, IOException {
+    private void commitBlock(Connection connection, EthBlock.Block block) throws SQLException, IOException, IllegalBlockchainStateException {
+        int n;
+
         try {
             // Get all of uncles blocks in advance if it exist
 
@@ -172,25 +181,45 @@ public class BlockchainConverter implements Runnable {
                 }
             }
 
+            // Get all of transaction receipt too
+            final List<EthBlock.TransactionResult> transactionResults = block.getTransactions();
+            final Transaction[] transactions = new Transaction[transactionResults.size()];
+            final TransactionReceipt[] transactionReceipts = new TransactionReceipt[transactionResults.size()];
+
+            for (int i = 0; i < transactions.length; i++) {
+                transactions[i] = (Transaction) transactionResults.get(i).get();
+
+                final Optional<TransactionReceipt> transactionReceiptOptional = web3jManager.getWeb3j().ethGetTransactionReceipt(transactions[i].getHash()).send().getTransactionReceipt();
+
+                if (!transactionReceiptOptional.isPresent()) {
+                    throw new IllegalBlockchainStateException("An transaction receipt of a transaction included in the requested block not exist on the blockchain");
+                }
+
+                transactionReceipts[i] = transactionReceiptOptional.get();
+            }
+
+
             // First, insert the block
+
             final PreparedStatement prpstmt = connection.prepareStatement(
                     "INSERT INTO blocks VALUES " +
                             "(NULL, ?, UNHEX(?), UNHEX(?), FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
                             "UNHEX(?), ?)", RETURN_GENERATED_KEYS);
 
             // TODO Every integer number on go-nekonium is arbitrary integer, it will overflow on mysql in future (distant future)
-            prpstmt.setString(1, block.getNumber().toString());
-            prpstmt.setString(2, block.getHash().substring(2));
-            prpstmt.setString(3, block.getParentHash().substring(2));
-            prpstmt.setString(4, block.getTimestamp().toString());
-            prpstmt.setString(5, block.getMiner().substring(2));
-            prpstmt.setString(6, block.getDifficulty().toString());
-            prpstmt.setString(7, block.getGasLimit().toString());
-            prpstmt.setString(8, block.getGasUsed().toString());
-            prpstmt.setString(9, block.getExtraData().substring(2));
-            prpstmt.setString(10, block.getNonce().toString());
-            prpstmt.setString(11, block.getSha3Uncles().substring(2));
-            prpstmt.setString(12, block.getSize().toString());
+            n = 0;
+            prpstmt.setString(++n, block.getNumber().toString());
+            prpstmt.setString(++n, block.getHash().substring(2));
+            prpstmt.setString(++n, block.getParentHash().substring(2));
+            prpstmt.setString(++n, block.getTimestamp().toString());
+            prpstmt.setString(++n, block.getMiner().substring(2));
+            prpstmt.setString(++n, block.getDifficulty().toString());
+            prpstmt.setString(++n, block.getGasLimit().toString());
+            prpstmt.setString(++n, block.getGasUsed().toString());
+            prpstmt.setString(++n, block.getExtraData().substring(2));
+            prpstmt.setString(++n, block.getNonce().toString());
+            prpstmt.setString(++n, block.getSha3Uncles().substring(2));
+            prpstmt.setString(++n, block.getSize().toString());
 
             prpstmt.executeUpdate();
             // Get AUTO_INCLEMENT value the same time as the update execution
@@ -212,21 +241,22 @@ public class BlockchainConverter implements Runnable {
                                 "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), " +
                                 "?, UNHEX(?), ?)");
 
-                // TODO Every integer number on go-nekonium is non-fixed integer, it will overflow on mysql in the future (distant future)
-                prpstmt2.setString(1, uncleBlock.getNumber().toString());           // This uncle block's block number
-                prpstmt2.setLong(2, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
-                prpstmt2.setInt(3, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
-                prpstmt2.setString(4, uncleBlock.getHash().substring(2));
-                prpstmt2.setString(5, uncleBlock.getParentHash().substring(2));
-                prpstmt2.setString(6, uncleBlock.getTimestamp().toString());
-                prpstmt2.setString(7, uncleBlock.getMiner().substring(2));
-                prpstmt2.setString(8, uncleBlock.getDifficulty().toString());
-                prpstmt2.setString(9, uncleBlock.getGasLimit().toString());
-                prpstmt2.setString(10, block.getGasUsed().toString());
-                prpstmt2.setString(11, uncleBlock.getExtraData().substring(2));
-                prpstmt2.setString(12, uncleBlock.getNonce().toString());
-                prpstmt2.setString(13, uncleBlock.getSha3Uncles().substring(2));
-                prpstmt2.setString(14, uncleBlock.getSize().toString());
+
+                n = 0;
+                prpstmt2.setString(++n, uncleBlock.getNumber().toString());           // This uncle block's block number
+                prpstmt2.setLong(++n, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
+                prpstmt2.setInt(++n, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
+                prpstmt2.setString(++n, uncleBlock.getHash().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getParentHash().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getTimestamp().toString());
+                prpstmt2.setString(++n, uncleBlock.getMiner().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getDifficulty().toString());
+                prpstmt2.setString(++n, uncleBlock.getGasLimit().toString());
+                prpstmt2.setString(++n, uncleBlock.getGasUsed().toString());
+                prpstmt2.setString(++n, uncleBlock.getExtraData().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getNonce().toString());
+                prpstmt2.setString(++n, uncleBlock.getSha3Uncles().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getSize().toString());
 
                 prpstmt2.executeUpdate();
                 prpstmt2.close();
@@ -235,26 +265,36 @@ public class BlockchainConverter implements Runnable {
 
             // Third, insert transactions
 
-            for (EthBlock.TransactionResult result : block.getTransactions()) {
-                final Transaction transaction = (Transaction) result.get();
+            for (int i = 0; i < transactions.length; i++) {
+                final Transaction transaction = transactions[i];
+                final TransactionReceipt transactionReceipt = transactionReceipts[i];
 
                 final PreparedStatement prpstmt3 = connection.prepareStatement(
                         "INSERT INTO transactions VALUES " +
-                                "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, UNHEX(?))");
-                prpstmt3.setString(1, transaction.getBlockNumber().toString());
-                prpstmt3.setLong(2, blockInternalId);
-                prpstmt3.setString(3, transaction.getTransactionIndex().toString());
-                prpstmt3.setString(4, transaction.getHash().substring(2));
-                prpstmt3.setString(5, transaction.getFrom().substring(2));
-                prpstmt3.setString(6, transaction.getTo() == null ? null : transaction.getTo().substring(2));
-                prpstmt3.setBytes(7, transaction.getValue().toByteArray());
-                prpstmt3.setString(8, transaction.getGas().toString());
-                prpstmt3.setBytes(9, transaction.getGasPrice().toByteArray());
-                prpstmt3.setString(10, transaction.getNonce().toString());
-                prpstmt3.setString(11, transaction.getInput().substring(2));
+                                "(NULL, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?))");
+                n = 0;
+                prpstmt3.setLong(++n, blockInternalId);
+                prpstmt3.setString(++n, transaction.getTransactionIndex().toString());
+                prpstmt3.setString(++n, transaction.getHash().substring(2));
+                prpstmt3.setString(++n, transaction.getFrom().substring(2));
+                prpstmt3.setString(++n, transaction.getTo() == null ? null : transaction.getTo().substring(2));
+                prpstmt3.setString(++n, transactionReceipt.getContractAddress() == null ? null : transactionReceipt.getContractAddress().substring(2));
+                prpstmt3.setBytes(++n, transaction.getValue().toByteArray());
+                prpstmt3.setString(++n, transaction.getGas().toString());
+                prpstmt3.setString(++n, transactionReceipt.getGasUsed().toString());
+                prpstmt3.setBytes(++n, transaction.getGasPrice().toByteArray());
+                prpstmt3.setString(++n, transaction.getNonce().toString());
+                prpstmt3.setString(++n, transaction.getInput().substring(2));
 
                 prpstmt3.executeUpdate();
                 prpstmt3.close();
+
+                if (!transaction.getValue().equals(BigInteger.ZERO)) {
+                    // TODO Nuko sending transaction, calculate address balance changes
+
+
+                }
+
             }
 
             // And finally, commit it

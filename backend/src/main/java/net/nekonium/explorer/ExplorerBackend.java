@@ -1,6 +1,6 @@
 package net.nekonium.explorer;
 
-import net.nekonium.explorer.server.endpoint.BlockNumberEndPoint;
+import net.nekonium.explorer.server.ExplorerServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +38,7 @@ public class ExplorerBackend {
         // Start websocket server
 
         this.webSocketServer = new ExplorerServer();
-        this.webSocketServer.start(web3jManager);
+        this.webSocketServer.start(this);
 
         // TODO needs to watch if those nasty multi threads are causing error and stopping
 
@@ -62,5 +62,13 @@ public class ExplorerBackend {
         this.converter.stop();
         // Wait for converter thread to stop its job
         this.converterThread.join();
+    }
+
+    public Web3jManager getWeb3jManager() {
+        return web3jManager;
+    }
+
+    public DatabaseManager getDatabaseManager() {
+        return databaseManager;
     }
 }

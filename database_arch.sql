@@ -25,6 +25,7 @@ CREATE TABLE `blocks` (
 
 
 
+
 CREATE TABLE `uncle_blocks` (
 	`internal_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'This uncle\'s internal id, for giving an individual id for forked blocks',
 	`number` INT(11) UNSIGNED NOT NULL COMMENT 'This uncle\'s block number',
@@ -58,20 +59,20 @@ CREATE TABLE `uncle_blocks` (
 CREATE TABLE `transactions` (
 	`internal_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Internal id exists for giving every blocks an id, not only main chain one, but also forked blocks',
 	`block_id` INT(10) UNSIGNED NOT NULL COMMENT 'Block\'s internal id that this transaction is included in',
-	`block_number` INT(10) UNSIGNED NOT NULL COMMENT 'Block number that this transaction is included in NOT NEEDED',
 	`index` SMALLINT(5) UNSIGNED NOT NULL COMMENT 'Transaction index number on the block that this transaction is included in. Smaller the number is, it has to be processed earlier from the same blocks ones.',
 	`hash` BINARY(32) NOT NULL,
 	`from` BINARY(20) NOT NULL,
 	`to` BINARY(20) NULL DEFAULT NULL,
+	`contract_address` BINARY(20) NULL DEFAULT NULL,
 	`value` VARBINARY(16) NOT NULL,
-	`gas` MEDIUMINT(8) UNSIGNED NOT NULL,
+	`gas_provided` MEDIUMINT(8) UNSIGNED NOT NULL,
+	`gas_used` MEDIUMINT(8) UNSIGNED NOT NULL,
 	`gas_price` VARBINARY(16) NOT NULL,
 	`nonce` BIGINT(20) UNSIGNED NOT NULL,
 	`input` BLOB NOT NULL,
 	PRIMARY KEY (`internal_id`),
 	INDEX `to` (`to`),
 	INDEX `from` (`from`),
-	INDEX `block_number` (`block_number`),
 	INDEX `hash` (`hash`),
 	INDEX `FK_transactions_blocks` (`block_id`),
 	CONSTRAINT `FK_transactions_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE

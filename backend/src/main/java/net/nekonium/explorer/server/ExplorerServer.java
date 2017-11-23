@@ -1,5 +1,7 @@
-package net.nekonium.explorer;
+package net.nekonium.explorer.server;
 
+import net.nekonium.explorer.ExplorerBackend;
+import net.nekonium.explorer.Web3jManager;
 import net.nekonium.explorer.server.endpoint.BlockEndPoint;
 import net.nekonium.explorer.server.endpoint.BlockNumberEndPoint;
 import org.eclipse.jetty.server.Server;
@@ -15,8 +17,10 @@ public class ExplorerServer {
 
     private Server httpServer;
     private Web3jManager web3jManager;
+    private static ExplorerBackend backend;
 
-    public void start(Web3jManager web3jManager) throws Exception {
+    public void start(ExplorerBackend backend) throws Exception {
+        ExplorerServer.backend = backend;
         this.web3jManager = web3jManager;
 
         // Start websocket server
@@ -58,5 +62,9 @@ public class ExplorerServer {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static ExplorerBackend getBackend() {
+        return backend;
     }
 }
