@@ -4,14 +4,17 @@ import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import javax.websocket.OnError;
 import javax.websocket.OnMessage;
+import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.net.SocketTimeoutException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -58,13 +61,30 @@ public class RequestEndPoint {
         }
     }
 
+    @OnOpen
+    public void onOpen(Session session) {
+        session.setMaxIdleTimeout(3 * 60 * 1000);   // 3 minutes to idle time out
+        session.setMaxTextMessageBufferSize(256);   // TODO set to ideal size
+        session.setMaxTextMessageBufferSize(1024);  // TODO this too
+    }
+
     @OnMessage
     public void onMessage(Session session, String message) throws IOException {
-        final JSONObject jsonObject = new JSONObject(message);  // Deserialize json string client sent
+        final JSONObject jsonObject;  // Deserialize json string client sent
+        try {
+            jsonObject = new JSONObject(message);
+        } catch (JSONException e) {
+            session.close();    // It's not json!
+            return;
+        }
+
+        if (!jsonObject.has("id") || !jsonObject.has("demand") || !jsonObject.has("content")) {
+            session.close();    // If request doesn't have either one of them, it is invalid
+            return;
+        }
 
         final long requestId = jsonObject.getLong("id"); // This request's id for identification between multiple requests
         final String demand = jsonObject.getString("demand"); // This query's demand (handler name)
-        final JSONObject jsonObjectContent = jsonObject.getJSONObject("content"); // This request's content
 
         final RequestHandler handler = handlers.get(demand.toLowerCase());
 
@@ -75,7 +95,27 @@ public class RequestEndPoint {
             return;
         }
 
-        /* Requested handler is registered, do it on another thread */
+        /* Requested handler is registered */
+
+        final Object jsonContent; // This request's content
+
+        try {
+            if (handler.getContentType() == RequestHandler.RequestContentType.OBJECT) {
+                jsonContent = jsonObject.getJSONObject("content");
+            } else {
+                jsonContent = jsonObject.getJSONArray("content");
+            }
+        } catch (JSONException e) {
+            session.close();    // Invalid format
+            return;
+        }
+
+        if (handler.isLackingParameter(jsonContent)) {
+            session.close();    // Invalid content format
+            return;
+        }
+
+        /* Call handler from another thread */
 
         final WeakReference<Session> sessionWeakReference = new WeakReference<>(session);   // Wrap an session with WeakReference for avoiding memory leak (maybe)
 
@@ -92,7 +132,7 @@ public class RequestEndPoint {
             final Object jsonResult;
 
             try {
-                jsonResult = handler.handle(jsonObjectContent);
+                jsonResult = handler.handle(jsonContent);
             } catch (InvalidRequestException e) {   // This is one special exception, don't show print error on the logger
                 /* Received request was invalid, closing the session */
                 try {
@@ -124,11 +164,27 @@ public class RequestEndPoint {
     }
 
     @OnError
-    public void onError(Session session) {
+    public void onError(Session session, Throwable throwable) {
+        if (throwable instanceof SocketTimeoutException) {
+            // Socket timed out
+            ExplorerServer.getInstance().getLogger().error("Session timed out for {}", session.getId());
+        } else {
+            ExplorerServer.getInstance().getLogger().error("An unknown error occurred", throwable);
+        }
+
+        /* Close the session when error occurred */
         try {
             session.close();
         } catch (IOException e) {
             ExplorerServer.getInstance().getLogger().error("An error occurred when closing a session", e);
         }
+    }
+
+    public static void registerHandler(String handlerId, RequestHandler handler) {
+        if (handlers.containsKey(handlerId)) {
+            throw new IllegalArgumentException("The request handler with same id exists");
+        }
+
+        handlers.put(handlerId.toLowerCase(), handler);
     }
 }

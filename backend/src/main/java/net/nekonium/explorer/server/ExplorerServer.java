@@ -4,6 +4,7 @@ import net.nekonium.explorer.ExplorerBackend;
 import net.nekonium.explorer.server.endpoint.BlockEndPoint;
 import net.nekonium.explorer.server.endpoint.BlockNumberEndPoint;
 import net.nekonium.explorer.server.endpoint.RequestEndPoint;
+import net.nekonium.explorer.server.handler.SearchRequestHandler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
@@ -58,8 +59,10 @@ public class ExplorerServer {
         }
 
         RequestEndPoint.initQueryExecutor(); // Initialize RequestEndPoint's query executor before starting a server
+        /* Registering handlers for RequestEndPoint */
+        RequestEndPoint.registerHandler("search", new SearchRequestHandler());
 
-        this.httpServer.start();
+        this.httpServer.start();    // Start a server
 
         /* Subscribe for a new block filter */
 

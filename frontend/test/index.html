@@ -13,10 +13,22 @@
 <script type="application/javascript">
     let ws = new WebSocket('ws://localhost:8080/request');
 
-    ws.onmessage = function(event) {
+    function log(text) {
         let element = document.getElementById("text");
 
-        element.insertAdjacentHTML("afterbegin", event.data + "<br>");
+        element.insertAdjacentHTML("afterbegin", text + "<br>");
+    }
+
+    ws.onmessage = function(event) {
+        log(event.data);
+    };
+
+    ws.onopen = function () {
+        request("search", {word: "0x734a6fc85f54e7e49394788aa7b228f68dff8951"});
+    };
+
+    ws.onclose = function () {
+        log("closed");
     };
 
     let requestSeqId = 0;
@@ -28,7 +40,7 @@
             content: content
         };
 
-        ws.send(wrapped);
+        ws.send(JSON.stringify(wrapped));
     }
 
 </script>
