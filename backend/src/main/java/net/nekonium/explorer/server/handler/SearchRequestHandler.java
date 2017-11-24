@@ -6,6 +6,7 @@ import net.nekonium.explorer.server.RequestHandler;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -33,6 +34,25 @@ public class SearchRequestHandler implements RequestHandler<String> {
 
         try {
             connection = ExplorerServer.getInstance().getBackend().getDatabaseManager().getConnection();
+
+            try {
+                final BigInteger number = new BigInteger(searchWord);
+
+                /* This continues if word was complete numeric (number) */
+                /* Comprehend word as block number */
+
+                final PreparedStatement prpstmt = connection.prepareStatement("SELECT 1 FROM blocks WHERE number = ?");
+                prpstmt.setString(1, number.toString());
+
+                final ResultSet resultSet = prpstmt.executeQuery();
+
+                if (resultSet.next()) {
+                    jsonArrayResult.put("block_number"); // Block exists
+                }
+                prpstmt.close();
+            } catch (NumberFormatException e) {
+            }
+
 
             if (searchWord.length() == 64 + 2) {
                 /* Might be a transaction */

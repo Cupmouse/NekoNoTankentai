@@ -20,4 +20,8 @@ public class JSONUtil {
     public static boolean hasJSONObject(JSONObject jsonObject, String key) {
         return jsonObject.get(key) instanceof JSONObject;
     }
+
+    public static boolean hasJSONArray(JSONObject jsonObject, String key) {
+        return jsonObject.get(key) instanceof JSONArray;
+    }
 }

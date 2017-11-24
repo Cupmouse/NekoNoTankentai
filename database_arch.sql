@@ -25,7 +25,6 @@ CREATE TABLE `blocks` (
 
 
 
-
 CREATE TABLE `uncle_blocks` (
 	`internal_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'This uncle\'s internal id, for giving an individual id for forked blocks',
 	`number` INT(11) UNSIGNED NOT NULL COMMENT 'This uncle\'s block number',
@@ -75,8 +74,27 @@ CREATE TABLE `transactions` (
 	INDEX `from` (`from`),
 	INDEX `hash` (`hash`),
 	INDEX `FK_transactions_blocks` (`block_id`),
+	INDEX `block_id_index` (`block_id`, `index`),
 	CONSTRAINT `FK_transactions_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
 	COLLATE='utf8_general_ci'
 	ENGINE=InnoDB
 ;
+
+
+
+
+CREATE FUNCTION `NEKH`(
+	`param` BLOB
+
+
+)
+	RETURNS mediumtext CHARSET utf8
+LANGUAGE SQL
+DETERMINISTIC
+NO SQL
+	SQL SECURITY INVOKER
+	COMMENT 'Inputs data, returns nekonium format hex string'
+	BEGIN
+		RETURN CONCAT('0x', LOWER(HEX(param)));
+	END

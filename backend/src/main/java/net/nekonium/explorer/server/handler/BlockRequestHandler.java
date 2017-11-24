@@ -275,7 +275,8 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
                 prpstmt.close();
             } else if (detail == BlockRequest.TransactionDetail.HASH_ONLY) {
-                final PreparedStatement prpstmt = connection.prepareStatement("SELECT NEKH(hash) FROM transactions WHERE block_id = ? ORDER BY `index` ASC");
+                final PreparedStatement prpstmt =
+                        connection.prepareStatement("SELECT NEKH(hash) FROM transactions WHERE block_id = ? ORDER BY `index` ASC");
                 prpstmt.setString(1, blockInternalId.toString());
 
                 final ResultSet resultSet = prpstmt.executeQuery();

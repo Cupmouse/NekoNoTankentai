@@ -2,6 +2,7 @@ package net.nekonium.explorer.server.handler;
 
 import org.json.JSONObject;
 
+import java.math.BigInteger;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -38,7 +39,7 @@ class HandlerCommon {
 
         jsonObjectTransaction.put("gas_provided",   resultSet.getInt(++n));
         jsonObjectTransaction.put("gas_used",       resultSet.getInt(++n));
-        jsonObjectTransaction.put("gas_price",      resultSet.getBytes(++n));
+        jsonObjectTransaction.put("gas_price",      new BigInteger(resultSet.getBytes(++n)).toString());
         jsonObjectTransaction.put("nonce",          resultSet.getString(++n));
         jsonObjectTransaction.put("input",          resultSet.getString(++n));
 

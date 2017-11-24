@@ -15,6 +15,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
 import static net.nekonium.explorer.util.JSONUtil.hasJSONObject;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
@@ -22,13 +23,13 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
     @Override
     public TransactionRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
-        if (!hasJSONObject(jsonObject, "content")) {
+        if (!hasJSONArray(jsonObject, "content")) {
             throw new InvalidRequestException("'content' has to be array");
         }
 
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
-        if (jsonArrayContent.length() >= 1) {
+        if (jsonArrayContent.length() < 1) {
             throw new InvalidRequestException("No parameters found");
         }
 
@@ -88,9 +89,10 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
             if (parameters instanceof TransactionRequest.NumberAndIndex) {
                 prpstmt = connection.prepareStatement(
                         "SELECT internal_id, NEKH(hash), NEKH(`from`), NEKH(`to`), NEKH(contract_address), value, gas_provided, " +
-                                "gas_used, gas_price, nonce, NEKH(input) FROM transactions WHERE block_id = ? AND `index` = ?");
+                                "gas_used, gas_price, nonce, NEKH(input) FROM transactions " +
+                                "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE number = ? LIMIT 1) AND `index` = ?");
                 prpstmt.setString(1, ((TransactionRequest.NumberAndIndex) parameters).number.toString());
-                prpstmt.setInt(1, ((TransactionRequest.NumberAndIndex) parameters).index);
+                prpstmt.setInt(2, ((TransactionRequest.NumberAndIndex) parameters).index);
             } else {
                 /* hash */
 

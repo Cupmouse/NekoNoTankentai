@@ -25,6 +25,8 @@
 
     ws.onopen = function () {
         request("block", ['number', '14703', 'all', 'all']);
+        request("transaction", ['number_and_index', '14703', 0]);
+        request("search", '147031');
     };
 
     ws.onclose = function () {
