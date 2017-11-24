@@ -94,7 +94,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
                 throw new InvalidRequestException("Invalid block hash");
             }
 
-            return new UncleRequest.Hash(jsonArrayContent.getString(1));
+            return new UncleRequest.Hash(jsonArrayContent.getString(1).substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }
@@ -111,7 +111,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
 
             if (parameters instanceof UncleRequest.Hash) {
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE hash = ? LIMIT 1");
+                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE hash = UNHEX(?) LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.Hash) parameters).hash);
             } else if (parameters instanceof UncleRequest.Number) {
                 prpstmt = connection.prepareStatement(

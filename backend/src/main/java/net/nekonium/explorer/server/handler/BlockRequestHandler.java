@@ -13,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import static net.nekonium.explorer.server.handler.HandlerCommon.BLOCK_COLUMN;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.BlockRequest> {
@@ -96,7 +97,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                 throw new InvalidRequestException("Block hash is invalid");
             }
 
-            return new BlockRequest(hash, transactionDetail, uncleDetail);          // Block hash
+            return new BlockRequest(hash.substring(2), transactionDetail, uncleDetail);          // Block hash
         }
     }
 
@@ -115,13 +116,11 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
                 // TODO Forked blocks ?
                 prpstmt = connection.prepareStatement(
-                        "SELECT internal_id, number, NEKH(hash), NEKH(parent_hash), UNIX_TIMESTAMP(timestamp), " +
-                                "NEKH(miner), difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, NEKH(sha3_uncles), size " +
-                                "FROM blocks WHERE number = ? LIMIT 1");
+                        "SELECT " + BLOCK_COLUMN + " FROM blocks WHERE number = ? LIMIT 1");
                 prpstmt.setString(1, parameters.key.toString());
             } else {
                 // type is "hash"
-                prpstmt = connection.prepareStatement("SELECT * FROM blocks WHERE hash = UNHEX(?)");
+                prpstmt = connection.prepareStatement("SELECT " + BLOCK_COLUMN + " FROM blocks WHERE hash = UNHEX(?)");
                 prpstmt.setString(1, ((String) parameters.key));
             }
 

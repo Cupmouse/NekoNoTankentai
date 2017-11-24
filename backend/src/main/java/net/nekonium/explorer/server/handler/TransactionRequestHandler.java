@@ -71,7 +71,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
                 throw new InvalidRequestException("Invalid transaction hash");
             }
 
-            return new TransactionRequest.Hash(jsonArrayContent.getString(1));
+            return new TransactionRequest.Hash(jsonArrayContent.getString(1).substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }
@@ -95,7 +95,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
                 /* hash */
 
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + TRANSACTION_COLUMN + " FROM transactions WHERE hash = ? LIMIT 1");
+                        "SELECT " + TRANSACTION_COLUMN + " FROM transactions WHERE hash = UNHEX(?) LIMIT 1");
                 prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
             }
 
