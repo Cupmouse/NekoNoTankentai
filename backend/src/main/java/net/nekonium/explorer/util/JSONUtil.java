@@ -9,19 +9,24 @@ public class JSONUtil {
     private JSONUtil() {
     }
 
-    public static boolean hasTyped(final JSONArray jsonArray, int index, Class<?> type) throws JSONException {
+    public static boolean hasTyped(final JSONArray jsonArray, final int index, final Class<?> type) throws JSONException {
         return type.isInstance(jsonArray.get(index));
     }
 
-    public static boolean hasString(final JSONArray jsonArray, int index) throws JSONException {
+    public static boolean hasString(final JSONArray jsonArray, final int index) throws JSONException {
         return jsonArray.get(index) instanceof String;
     }
 
-    public static boolean hasJSONObject(JSONObject jsonObject, String key) {
+    public static boolean hasNumber(final JSONArray jsonArray, final int index) throws JSONException {
+        return jsonArray.get(index) instanceof Number;
+    }
+
+    public static boolean hasJSONObject(final JSONObject jsonObject, final String key) throws JSONException {
         return jsonObject.get(key) instanceof JSONObject;
     }
 
-    public static boolean hasJSONArray(JSONObject jsonObject, String key) {
+    public static boolean hasJSONArray(final JSONObject jsonObject, final String key) throws JSONException {
         return jsonObject.get(key) instanceof JSONArray;
     }
+
 }

@@ -4,7 +4,6 @@ import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
 import net.nekonium.explorer.util.FormatValidator;
-import net.nekonium.explorer.util.JSONUtil;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -15,8 +14,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import static net.nekonium.explorer.server.handler.HandlerCommon.TRANSACTION_COLUMN;
 import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
-import static net.nekonium.explorer.util.JSONUtil.hasJSONObject;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class TransactionRequestHandler implements RequestHandler<TransactionRequestHandler.TransactionRequest> {
@@ -88,17 +87,15 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
             final PreparedStatement prpstmt;
             if (parameters instanceof TransactionRequest.NumberAndIndex) {
                 prpstmt = connection.prepareStatement(
-                        "SELECT internal_id, NEKH(hash), NEKH(`from`), NEKH(`to`), NEKH(contract_address), value, gas_provided, " +
-                                "gas_used, gas_price, nonce, NEKH(input) FROM transactions " +
-                                "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE number = ? LIMIT 1) AND `index` = ?");
+                        "SELECT  " + TRANSACTION_COLUMN + " FROM transactions " +
+                                "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE number = ? LIMIT 1) AND `index` = ? LIMIT 1");
                 prpstmt.setString(1, ((TransactionRequest.NumberAndIndex) parameters).number.toString());
                 prpstmt.setInt(2, ((TransactionRequest.NumberAndIndex) parameters).index);
             } else {
                 /* hash */
 
                 prpstmt = connection.prepareStatement(
-                        "SELECT internal_id, NEKH(hash), NEKH(`from`), NEKH(`to`), NEKH(contract_address), value, gas_provided, " +
-                                "gas_used, gas_price, nonce, NEKH(input) FROM transactions WHERE hash = ?");
+                        "SELECT " + TRANSACTION_COLUMN + " FROM transactions WHERE hash = ? LIMIT 1");
                 prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
             }
 
