@@ -2,6 +2,7 @@ package net.nekonium.explorer.util;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public class JSONUtil {
 
@@ -14,5 +15,9 @@ public class JSONUtil {
 
     public static boolean hasString(final JSONArray jsonArray, int index) throws JSONException {
         return jsonArray.get(index) instanceof String;
+    }
+
+    public static boolean hasJSONObject(JSONObject jsonObject, String key) {
+        return jsonObject.get(key) instanceof JSONObject;
     }
 }

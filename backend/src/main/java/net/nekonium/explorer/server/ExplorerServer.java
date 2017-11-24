@@ -6,6 +6,7 @@ import net.nekonium.explorer.server.endpoint.BlockNumberEndPoint;
 import net.nekonium.explorer.server.endpoint.RequestEndPoint;
 import net.nekonium.explorer.server.handler.BlockRequestHandler;
 import net.nekonium.explorer.server.handler.SearchRequestHandler;
+import net.nekonium.explorer.server.handler.TransactionRequestHandler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
@@ -63,6 +64,7 @@ public class ExplorerServer {
         /* Registering handlers for RequestEndPoint */
         RequestEndPoint.registerHandler("search", new SearchRequestHandler());
         RequestEndPoint.registerHandler("block", new BlockRequestHandler());
+        RequestEndPoint.registerHandler("transaction", new TransactionRequestHandler());
 
         this.httpServer.start();    // Start a server
 

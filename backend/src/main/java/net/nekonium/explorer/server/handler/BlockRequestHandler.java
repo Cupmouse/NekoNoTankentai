@@ -92,7 +92,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             final String hash = jsonArrayContent.getString(1);
 
-            if (!FormatValidator.isValidTransactionHash(hash)) {    // Check if hash is valid
+            if (!FormatValidator.isValidBlockHash(hash)) {    // Check if hash is valid
                 throw new InvalidRequestException("Block hash is invalid");
             }
 
@@ -109,23 +109,23 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             /* Get block data first */
 
-            final PreparedStatement prpstmt1;
+            final PreparedStatement prpstmt;
 
             if (parameters.type == BlockRequest.Type.NUMBER) {
 
                 // TODO Forked blocks ?
-                prpstmt1 = connection.prepareStatement(
+                prpstmt = connection.prepareStatement(
                         "SELECT internal_id, number, NEKH(hash), NEKH(parent_hash), UNIX_TIMESTAMP(timestamp), " +
                                 "NEKH(miner), difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, NEKH(sha3_uncles), size " +
                                 "FROM blocks WHERE number = ? LIMIT 1");
-                prpstmt1.setString(1, parameters.key.toString());
+                prpstmt.setString(1, parameters.key.toString());
             } else {
                 // type is "hash"
-                prpstmt1 = connection.prepareStatement("SELECT * FROM blocks WHERE hash = UNHEX(?)");
-                prpstmt1.setString(1, ((String) parameters.key));
+                prpstmt = connection.prepareStatement("SELECT * FROM blocks WHERE hash = UNHEX(?)");
+                prpstmt.setString(1, ((String) parameters.key));
             }
 
-            final ResultSet resultSet = prpstmt1.executeQuery();
+            final ResultSet resultSet = prpstmt.executeQuery();
 
             /* Parse result set to json */
 
@@ -138,23 +138,23 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
                 blockInternalId = new BigInteger(resultSet.getString(++n));
                 jsonObjectContents.put("internal_id"    , blockInternalId);
-                jsonObjectContents.put("number"         , new BigInteger(resultSet.getString(++n)));
+                jsonObjectContents.put("number"         , resultSet.getString(++n));
                 jsonObjectContents.put("hash"           , resultSet.getString(++n));
                 jsonObjectContents.put("parent_hash"    , resultSet.getString(++n));
                 jsonObjectContents.put("timestamp"      , resultSet.getLong(++n));
                 jsonObjectContents.put("miner"          , resultSet.getString(++n));
-                jsonObjectContents.put("difficulty"     , new BigInteger(resultSet.getString(++n)));
+                jsonObjectContents.put("difficulty"     , resultSet.getString(++n));
                 jsonObjectContents.put("gas_limit"      , resultSet.getLong(++n));
                 jsonObjectContents.put("gas_used"       , resultSet.getLong(++n));
                 jsonObjectContents.put("extra_data"     , resultSet.getString(++n));
-                jsonObjectContents.put("nonce"          , new BigInteger(resultSet.getString(++n)));
+                jsonObjectContents.put("nonce"          , resultSet.getString(++n));
                 jsonObjectContents.put("sha3_uncles"    , resultSet.getString(++n));
                 jsonObjectContents.put("size"           , resultSet.getInt(++n));
             } else {
                 return false;   // If no blocks found, content will be just boolean false
             }
 
-            prpstmt1.close();
+            prpstmt.close();
 
             if (parameters.transactionDetail != BlockRequest.TransactionDetail.NOT_INCLUDE) {
                 /* Get transactions */
@@ -212,17 +212,17 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                     final JSONObject jsonObjectUncle = new JSONObject();
 
                     int n = 0;
-                    jsonObjectUncle.put("internal_id"   , new BigInteger(resultSet.getString(++n)));
-                    jsonObjectUncle.put("number"        , new BigInteger(resultSet.getString(++n)));
+                    jsonObjectUncle.put("internal_id"   , resultSet.getString(++n));
+                    jsonObjectUncle.put("number"        , resultSet.getString(++n));
                     jsonObjectUncle.put("hash"          , resultSet.getString(++n));
                     jsonObjectUncle.put("parent_hash"   , resultSet.getString(++n));
                     jsonObjectUncle.put("timestamp"     , resultSet.getLong(++n));
                     jsonObjectUncle.put("miner"         , resultSet.getString(++n));
-                    jsonObjectUncle.put("difficulty"    , new BigInteger(resultSet.getString(++n)));
+                    jsonObjectUncle.put("difficulty"    , resultSet.getString(++n));
                     jsonObjectUncle.put("gas_limit"     , resultSet.getLong(++n));
                     jsonObjectUncle.put("gas_used"      , resultSet.getLong(++n));
                     jsonObjectUncle.put("extra_data"    , resultSet.getString(++n));
-                    jsonObjectUncle.put("nonce"         , new BigInteger(resultSet.getString(++n)));
+                    jsonObjectUncle.put("nonce"         , resultSet.getString(++n));
                     jsonObjectUncle.put("sha3_uncles"   , resultSet.getString(++n));
                     jsonObjectUncle.put("size"          , resultSet.getInt(++n));
 
@@ -270,39 +270,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                 final ResultSet resultSet = prpstmt.executeQuery();
 
                 while (resultSet.next()) {
-                    final JSONObject jsonObjectTransaction = new JSONObject();
-
-                    int n = 0;
-
-                    jsonObjectTransaction.put("internal_id",    new BigInteger(resultSet.getString(++n)));
-                    jsonObjectTransaction.put("hash",           resultSet.getString(++n));
-                    jsonObjectTransaction.put("from",           resultSet.getString(++n));
-
-                    TransactionType transactionType;
-
-                    if (resultSet.getString(++n) == null) { // to == null means contract creation transaction
-                        transactionType = TransactionType.CONTRACT_CREATION;
-
-                        jsonObjectTransaction.put("contract_address", resultSet.getString(++n));
-                        n++;    // Skip value
-                    } else {
-                        transactionType = TransactionType.SENDING;
-
-                        jsonObjectTransaction.put("to",     resultSet.getString(n));
-
-                        n++;    // Skip contract_address
-                        jsonObjectTransaction.put("value",  new BigInteger(resultSet.getBytes(++n)));
-                    }
-
-                    jsonObjectTransaction.put("type",           transactionType.name().toLowerCase());
-
-                    jsonObjectTransaction.put("gas_provided",   resultSet.getInt(++n));
-                    jsonObjectTransaction.put("gas_used",       resultSet.getInt(++n));
-                    jsonObjectTransaction.put("gas_price",      new BigInteger(resultSet.getBytes(++n)));
-                    jsonObjectTransaction.put("nonce",          new BigInteger(resultSet.getString(++n)));
-                    jsonObjectTransaction.put("input",          resultSet.getString(++n));
-
-                    jsonArrayTransactions.put(jsonObjectTransaction);
+                    jsonArrayTransactions.put(HandlerCommon.getTransaction(resultSet));
                 }
 
                 prpstmt.close();
@@ -321,10 +289,6 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             return jsonArrayTransactions;
         }
-    }
-
-    enum TransactionType {
-        SENDING, CONTRACT_CREATION
     }
 
     static class BlockRequest {
