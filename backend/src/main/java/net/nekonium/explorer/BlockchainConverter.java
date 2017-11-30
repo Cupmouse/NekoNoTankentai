@@ -52,6 +52,15 @@ public class BlockchainConverter implements Runnable {
             this.logger.warn("Timestamp will be stored according to the current timezone and will not be converted when you change timezone later. (Note: It will depend on the database)");
         }
 
+        try {
+            if (web3jManager.getWeb3j().ethSyncing().send().isSyncing()) {
+                logger.error("Nekonium node is syncing, stopping converter");
+                return;
+            }
+        } catch (IOException e) {
+            logger.error("An error occurred when communicating with the node", e);
+        }
+
         // Let's check the block number where to start fetching from
         // Using BigInteger for avoiding overflow, as go-nekonium uses an arbitrary precision integer for block number
         BigInteger catchupStart;
