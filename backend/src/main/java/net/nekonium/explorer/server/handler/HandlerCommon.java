@@ -43,7 +43,7 @@ class HandlerCommon {
             jsonObjectTransaction.put("to",     resultSet.getString(n));
 
             n++;    // Skip contract_address
-            jsonObjectTransaction.put("value",  resultSet.getBytes(++n));
+            jsonObjectTransaction.put("value",  new BigInteger(resultSet.getBytes(++n)).toString());
         }
 
         jsonObjectTransaction.put("type",           transactionType.name().toLowerCase());

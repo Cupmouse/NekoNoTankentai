@@ -185,7 +185,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
     private Object getUncleBlocks(Connection connection, BigInteger blockInternalId, BlockRequest.UncleDetail detail) throws SQLException {
         if (detail == BlockRequest.UncleDetail.COUNT) {
             /* Returns uncle count of the block */
-            final PreparedStatement prpstmt = connection.prepareStatement("SELECT 1 FROM uncle_blocks WHERE block_id = ? ORDER BY `index` ASC");
+            final PreparedStatement prpstmt = connection.prepareStatement("SELECT NEKH(hash) FROM uncle_blocks WHERE block_id = ? ORDER BY `index` ASC");
             prpstmt.setString(1, blockInternalId.toString());
 
             final ResultSet resultSet = prpstmt.executeQuery();
