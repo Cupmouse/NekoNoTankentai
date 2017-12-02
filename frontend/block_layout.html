@@ -19,7 +19,7 @@
                 <nav>
                     <ul class="pure-menu-list">
                         <li class="pure-menu-item">
-                            <a href="#" onclick="loadViewBlock('0')" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
+                            <a href="#" onclick="loadViewBlock('170317')" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
                         </li>
                         <li class="pure-menu-item">
                             <a href="#" onclick="loadViewTransactionList()" class="pure-menu-link"><i class="fa fa-exchange" aria-hidden="true"></i> Transactions</a>
@@ -56,65 +56,172 @@
     </div>
 </header>
 <div id="contents-wrapper">
-    <!-- Loading screen appears only on view loading -->
-    <div id="loading">
-        LOADING...
-    </div>
     <!-- Inserts an contents in this div tag using Ajax -->
     <div id="contents">
         <div class="pure-g">
-            <div class="pure-u-1-4">
-                <span class="block-list-element"><i class="fa fa-arrow-up" aria-hidden="true"></i></span>
-                <div>
-                    <span class="block-list-element">1</span>
-                    <span class="block-list-element">2</span>
-                    <span class="block-list-element">3</span>
-                    <span class="block-list-element">4</span>
-                    <span class="block-list-element">5</span>
-                    <span class="block-list-element">6</span>
-                    <span class="block-list-element">7</span>
-                    <span class="block-list-element">8</span>
-                    <span class="block-list-element">9</span>
-                    <span class="block-list-element">10</span>
-                    <span class="block-list-element">11</span>
+            <div id="blockview-left" class="pure-u-1-4">
+                <div id="blockview-list">
+                    <div id="blockview-list-inner">
+
+                    </div>
                 </div>
-                <span class="block-list-element"><i class="fa fa-arrow-down" aria-hidden="true"></i></span>
             </div>
             <div class="pure-u-3-4">
-                <h1>Block #${response['number']}</h1>
-                <div >
-                    <div class="block-time">
-                        <canvas id="canvas-block-time-clock" class="block-time-clock" height="200px" width="200px"></canvas>
+                <div id="blockview-right">
+                    <div>
+                        <h1>Block #${response['number']}</h1>
+                        <div class="block-time">
+                            <canvas id="canvas-block-time-clock" class="block-time-clock" height="200px" width="200px"></canvas>
+                        </div>
+                        <div class="block-about">
+                            <table class="pure-table pure-table-striped">
+                                <tbody>
+                                <tr><th>Hash</th><td>${response['hash']}</td></tr>
+                                <tr><th>Mined by</th><td>${response['miner']}</td></tr>
+                                <tr><th>Difficulty</th><td>${response['difficulty']}</td></tr>
+                                <tr><th>Gas</th><td>${response['gas_used']}/${response['gas_limit']}</td></tr>
+                                <tr><th>Nonce</th><td>${response['nonce']}</td></tr>
+                                <tr><th>sha3 Uncles</th><td>${response['sha3_uncles']}</td></tr>
+                                </tbody>
+                            </table>
+                            <span class="mini-caption">Hash</span>
+                            <span class="captioned-text">${response['hash']}</span>
+                            <span class="mini-caption">Mined by</span>
+                            <span class="captioned-text">${response['miner']}</span>
+                            <span class="mini-caption">Difficulty</span>
+                            <span class="captioned-text">${response['difficulty']}</span>
+                            <span class="mini-caption">Gas</span>
+                            <span class="captioned-text">${response['gas_used']}/${response['gas_limit']}</span>
+                            <span class="mini-caption">Nonce</span>
+                            <span class="captioned-text">${response['nonce']}</span>
+                            <span class="mini-caption">sha3 Uncles</span>
+                            <span class="captioned-text">${response['sha3_uncles']}</span>
+                        </div>
                     </div>
-                    <div class="block-about">
-                        <span class="mini-caption">Hash</span>
-                        <span class="captioned-text">${response['hash']}</span>
-                        <span class="mini-caption">Mined by</span>
-                        <span class="captioned-text">${response['miner']}</span>
-                        <span class="mini-caption">Difficulty</span>
-                        <span class="captioned-text">${response['difficulty']}</span>
-                        <span class="mini-caption">Gas</span>
-                        <span class="captioned-text">${response['gas_used']}/${response['gas_limit']}</span>
-                        <span class="mini-caption">Nonce</span>
-                        <span class="captioned-text">${response['nonce']}</span>
-                        <span class="mini-caption">sha3 Uncles</span>
-                        <span class="captioned-text">${response['sha3_uncles']}</span>
+                    <div>
+                        <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
+
                     </div>
-                </div>
-                <div>
-                    <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
+                    <div>
+                        <h2>${response['transactions'].length} Transaction(s)</h2>
 
-                    ${uncles_html}
-                </div>
-                <div>
-                    <h2>${response['transactions'].length} Transaction(s)</h2>
-
-                    ${transactions_html}
+                        <div class="tx-list-element tx-sending">
+                            <span class="tx-list-title">Sending ${txValue} NUKO</span><br>
+                            ${transactions[i]['from']} <i class="fa fa-arrow-right" aria-hidden="true"></i> ${transactions[i]['to']}<br>
+                            ${transactions[i]['hash']}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+<script type="application/javascript">
+    const MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE = 100;  // This can't be small enough to fit the biggest screen in the world
+    const BLOCK_LIST_ELEMENTS_LOAD_N = 20;  // Maximum of this number of block list elements are added each time when scroll change is performed
+
+    let blocklistInner = document.getElementById('blockview-list-inner');
+    let blocklist = document.getElementById('blockview-list');
+
+    let blockListInitialized = false;
+    let scrollAction = false; // Not to do scroll change if events are issued while performing it
+    let elementHeight = -1; // Height of one block list element
+    let nextTopBlockNum;    // Next block number will be added to the block list on BEGINNING
+    let nextBottomBlockNum; // Next block number will be added to the block list on END
+
+    /* Initialize block list */
+
+    fillBlockList(20);
+
+    blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
+
+    blocklist.addEventListener('scroll', function () {  // Add scroll event listener
+        if (blockListInitialized && !scrollAction) {
+            scrollAction = true;
+
+            if (this.scrollTop <= elementHeight) {
+                /* Add more block elements on top of the list */
+                for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
+                    if (nextTopBlockNum < 0) {  // Already showing the oldest block (#0)
+                        break;  // Don't add elements anymore
+                    }
+                    addToBlockList('afterBegin', nextTopBlockNum--);   // Add an element on top of the list
+                }
+            } else if (this.scrollTop >= blocklistInner.clientHeight - blocklist.clientHeight - elementHeight) {
+                /* Add more block elements on bottom of the list */
+                for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
+                    if (nextBottomBlockNum > getLatestBlockNumber() + 1) {  // Already showing the latest block + 1
+                        break;
+                    }
+                    addToBlockList('beforeEnd', nextBottomBlockNum++);    // Add an element on bottom of the list
+                }
+            }
+
+            scrollAction = false;
+        }
+    });
+
+    function getLatestBlockNumber() {
+        return 100;
+    }
+
+    function fillBlockList(blockNumber) {
+        blocklistInner.innerHTML = '';  // Clear all elements
+
+        /* Fill block list with initial elements around the blockNumber */
+
+        addToBlockList('beforeEnd', blockNumber);  // Add a center block
+
+        elementHeight = blocklistInner.clientHeight; // Get how much y-space is needed for just one element
+
+        let latestBlockNum = getLatestBlockNumber();
+
+        nextTopBlockNum = blockNumber - 1;      // Next block number listed BEFORE the center block
+        nextBottomBlockNum = blockNumber + 1;   // Next block number listed AFTER the center block
+
+        let topBlocks = Math.ceil(blocklist.clientHeight / elementHeight) + 1;  // Default value of the amount of elements listed before the center block.
+        // Total height should be one element's height higher from the same as the list div height, if this number of elements are stacked
+
+        if (topBlocks > MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE) {    // This stops infinite loop to happen if something went wrong
+            topBlocks = MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE;
+        }
+
+        let bottomBlocks = topBlocks;   // Both default amount of bottom and top blocks are the same
+
+        if (blockNumber - topBlocks < 0) {  // Check if this exceeds the lower limit of zero (minimum block number)
+            topBlocks = blockNumber;    // Think blockNumber as the amount of blocks remaining on top of the center block.
+            // This would list all elements from zero to before the center block
+        }
+
+        if (blockNumber + bottomBlocks > (latestBlockNum + 1)) {  // Check if this exceeds the upper limit of latest block number + 1
+            bottomBlocks = (latestBlockNum + 1) - blockNumber;
+        }
+
+        /* Most fun part! Add elements to the HTML */
+
+        for (let i = 0; i < topBlocks; i++) {
+            addToBlockList('afterBegin', nextTopBlockNum--);    // Add element before the center block, watch out for decrement
+        }
+
+        for (let i = 0; i < bottomBlocks; i++) {   // Add predecessors of the block
+            addToBlockList('beforeEnd', nextBottomBlockNum++);
+        }
+
+        /* Try to set scroll bar where the center block become center of the list */
+
+        let yscroll = Math.round(elementHeight * (topBlocks + 0.5) - blocklist.clientHeight / 2);
+        let yscrollMax = blocklistInner.clientHeight - blocklist.clientHeight;
+
+        yscroll = Math.max(0, Math.min(yscroll, yscrollMax));   // Cannot scroll to negative or outside from an box
+
+        blocklist.scrollTop = yscroll;  // Set scroll bar
+    }
+
+    function addToBlockList(position, blockNumber) {
+        blocklistInner.insertAdjacentHTML(position, `<span id="blockview-list-element-n${blockNumber}" class="blockview-list-element">${blockNumber}</span>`);
+    }
+
+</script>
 <footer>
     <div class="pure-g">
         <div class="pure-u-1-1">

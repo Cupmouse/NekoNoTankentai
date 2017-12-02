@@ -6,136 +6,9 @@
     <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css"
           integrity="sha384-nn4HPE8lTHyVtfCBi5yW9d20FjT8BJwUXyWZT9InLYax14RDjBj46LmSztkmNP9w" crossorigin="anonymous">
     <link rel="stylesheet" href="./css/font-awesome.min.css">
+    <link rel="stylesheet" href="./css/main.css">
     <script type="application/javascript" src="js/Chart.min.js"></script>
-    <style>
-        body {
-            margin: 1.5em 3em;
-        }
-
-        #loading {
-            position: relative;
-            height: 100%;
-            width: 100%;
-            top: 0;
-            left: 0;
-
-            background-color: white;
-        }
-
-        #title {
-            font-size: 2.15em;
-            text-decoration: none;
-            color: inherit;
-        }
-
-        #title:hover {
-            color: grey;
-        }
-
-        #menu {
-            display: inline-block;
-            width: 0;
-        }
-
-        #mini-statistics {
-            /*border: solid 1px lightgray;*/
-            overflow: hidden;
-
-            font-size: 0.8em;
-        }
-
-        #search-box {
-            margin: 1em 0;
-        }
-
-        .text-selectable {
-            /* Enable text selection */
-            -moz-user-select: text;
-            -ms-user-select: text;
-            -khtml-user-select: auto;
-            -webkit-user-select: auto;
-            -webkit-touch-callout: default;
-        }
-
-
-        /*
-         Home view
-          */
-
-        .pure-form .input-text-highlight-red {
-            box-shadow: 0px 0px 6px red;
-            border: solid 1px red;
-        }
-
-        .input-text-highlight-green {
-
-        }
-
-        /*
-        View Common
-        */
-
-        h1 {
-            margin-top: 0;
-        }
-
-        .mini-caption {
-            color: gray;
-            font-size: 0.7em;
-            display: block;
-
-            /* Disable text selection */
-            -moz-user-select: none;
-            -ms-user-select: none;
-            -khtml-user-select: none;
-            -webkit-user-select: none;
-            -webkit-touch-callout: none;
-        }
-
-        .captioned-text {
-            padding-left: 1em;
-            word-break: break-all;
-            display: block;
-        }
-
-        .tx-list-element {
-            padding-left: 0.5em;
-        }
-
-        .tx-sending {
-            border-left: solid 10px #fde231;
-        }
-
-        .tx-list-title {
-            font-size: 1em;
-            font-weight: bold;
-        }
-
-        /*
-        Blocks View
-         */
-
-        .block-list-element {
-            display: block;
-            text-align: center;
-        }
-
-        .block-time {
-            display: inline-block;
-            margin-right: 1.5em;
-            text-align: center;
-        }
-
-        .block-time-clock {
-            display: block;
-            height: 100px;
-            width: 100px;
-        }
-
-        .block-about {
-            display: inline-block;
-        }
-    </style>
+    <script type="application/javascript" src="js/bignumber.min.js"></script>
 </head>
 <body>
 <header>
@@ -147,7 +20,7 @@
             <nav>
                 <ul class="pure-menu-list">
                     <li class="pure-menu-item">
-                        <a href="#" onclick="loadViewHome()" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
+                        <a href="#" onclick="loadViewBlock('170317')" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
                     </li>
                     <li class="pure-menu-item">
                         <a href="#" onclick="loadViewTransactionList()" class="pure-menu-link"><i class="fa fa-exchange" aria-hidden="true"></i> Transactions</a>
@@ -176,78 +49,21 @@
             <form id="search-form" class="pure-form">
                 <input type="text" id="search-box" class="pure-input-1" placeholder="Search">
             </form>
-        </div>
-        <div class="pure-u-1">
-            <span id="search-hint">No search results</span>
+            <div id="search-suggestions">
+                <ul id="search-suggestion-list">
+                </ul>
+            </div>
         </div>
     </div>
 </header>
 <div id="contents-wrapper">
     <!-- Loading screen appears only on view loading -->
     <div id="loading">
-        LOADING BABY
+        LOADING...
     </div>
     <!-- Inserts an contents in this div tag using Ajax -->
     <div id="contents">
-        <div class="pure-g">
-            <div class="pure-u-1-4">
-                <span class="block-list-element"><i class="fa fa-arrow-up" aria-hidden="true"></i></span>
-                <div>
-                    <span class="block-list-element">1</span>
-                    <span class="block-list-element">2</span>
-                    <span class="block-list-element">3</span>
-                    <span class="block-list-element">4</span>
-                    <span class="block-list-element">5</span>
-                    <span class="block-list-element">6</span>
-                    <span class="block-list-element">7</span>
-                    <span class="block-list-element">8</span>
-                    <span class="block-list-element">9</span>
-                    <span class="block-list-element">10</span>
-                    <span class="block-list-element">11</span>
-                </div>
-                <span class="block-list-element"><i class="fa fa-arrow-down" aria-hidden="true"></i></span>
-            </div>
-            <div class="pure-u-3-4">
-                <h1>Block #10000000</h1>
-                <div >
-                    <div class="block-time">
-                        <canvas id="temp" class="block-time-clock" height="200px" width="200px"></canvas>
-                    </div>
-                    <div class="block-about">
-                        <span class="mini-caption">Hash</span>
-                        <span class="captioned-text">${block_hash}</span>
-                        <span class="mini-caption">Mined by</span>
-                        <span class="captioned-text">${block_minedby}</span>
 
-                        <details>
-                            <summary>Click here for more info</summary>
-
-                            <div class="block-info">
-                                <span class="mini-caption">Difficulty</span>
-                                <span class="captioned-text">${block_difficulty}</span>
-                                <span class="mini-caption">Gas</span>
-                                <span class="captioned-text">${block_gasused}/${block_gaslimit}</span>
-                                <span class="mini-caption">Nonce</span>
-                                <span class="captioned-text">${block_nonce}</span>
-                                <span class="mini-caption">sha3 Uncles</span>
-                                <span class="captioned-text">${block_sha3_uncles}</span>
-                            </div>
-                        </details>
-                    </div>
-                </div>
-                <div>
-                    <h2>Citing ${uncle_count} Uncle(s)</h2>
-                </div>
-                <div>
-                    <h2>${transaction_count} Transaction(s)</h2>
-
-                    <div class="tx-list-element tx-sending">
-                        <span class="tx-list-title"><span class="text-unselectable">Sending </span>${tx_sending_amount}<span class="text-unselectable"> ${tx_unit}</span></span><br>
-                        ${tx_sending_from}<span class="text-selectable"> <i class="fa fa-arrow-right" aria-hidden="true"></i> </span>${tx_sending_to}
-                    </div>
-                </div>
-            </div>
-        </div>
 
     </div>
 </div>
@@ -255,10 +71,106 @@
 <script type="application/javascript">
     let div_contents = document.getElementById('contents');
     let search_box = document.getElementById('search-box');
-    let search_hint = document.getElementById('search-hint');
+    let search_suggestions = document.getElementById('search-suggestion-list');
 
     const REGEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
     const REGEX_TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
+
+    class RequestService {
+        constructor() {
+            this.connected = false;
+            this.connecting = false;
+            this.id = 0;
+        }
+
+        connectIfNot() {
+            if (this.connected || this.connecting) {
+                // Connection is already established or trying to
+                return;
+            }
+
+            /* Connect to the server */
+            this.connecting = true;
+
+            this.callbacks = new Map(); // Create map for storing a nonce and callbacks pair
+            this.websocket = new WebSocket('ws://localhost:8080/request');  // Connect to the request websocket server
+
+            let self = this;
+
+            this.websocket.onopen = function () {
+                self.connected = true;
+                self.connecting = false;
+                console.debug("CONNECTION OPENED");
+            };
+            this.websocket.onclose = function () {
+                self.connected = false;
+                self.connecting = false;
+                console.debug("CONNECTION CLOSED");
+            };
+
+            this.websocket.onmessage = function (event) {  // Set onmessage listener
+                let response = JSON.parse(event.data); // Parsing from STRING to OBJECT, not otherwise
+                let id = response['id'];
+
+                let callback = self.callbacks.get(id);  // Get callback for the id
+
+                callback(response['content']); // Call callback function
+
+                self.callbacks.delete(id);  // Delete callback from the map
+            };
+
+            this.nonce = 0; // Initial nonce is 0
+            this.id++;  // Increment connection id
+        }
+
+        connectAndRequest(demand, content, callback) {
+            this.connectIfNot();
+
+            let wrapped = { // Wrap content
+                id: this.nonce,
+                demand: demand,
+                content: content
+            };
+
+            let message = JSON.stringify(wrapped);
+
+            this.callbacks.set(this.nonce, callback);       // Store the callback for response
+            this.nonce++;   // Inclement nonce for the next request
+
+            if (this.connected) {
+                /* A connection is already established, sending a request immediately */
+                this.websocket.send(message);   // Send a request to the server
+                console.debug("send#1");
+            } else {
+                /* Send message to server, retry if connection is not ready */
+                let self = this;
+                let storedId = this.id;
+
+                let timerId = setInterval(function () {
+                    if (self.id !== storedId) {
+                        // Connection changed, maybe reestablished
+                        clearInterval(timerId); // This function is no longer be called
+                        console.debug("discarded#1");
+
+                    } else if (self.connected) {
+                        self.websocket.send(message);   // Send to request websocket server
+                        clearInterval(timerId); // Stop calling this function
+                        console.debug("send#2");
+
+                    } else if (!self.connecting) {
+                        // Connection is not established but not trying to
+                        clearInterval(timerId); // Guess connection failed
+                        console.debug("discarded#2");
+                    }
+                }, 100);
+            }
+        }
+    }
+
+    let requestService = new RequestService();
+
+    let searchStateId = 0;
+    let searchTimeoutId;
 
     // Registering search box input event
     search_box.addEventListener('input', function () {
@@ -269,33 +181,42 @@
             // If search word is empty string, going back to home
         }
 
-        let search_hint_text = "No search result";
+        let stored_ssid = ++searchStateId;
 
-        // Can be Nekonium client data format (0x prefix)
-        if (search_string.startsWith('0x')) {
-            if (search_string.length === 2 + 40 && isAddress(search_string)) {
-                // Can be an address format example:0x58a0a1d5e941bd2213a51f6362a8fc2728a16905
-                search_hint_text = 'Recognized as an address';
-            } else if (search_string.length === 2 + 64 && isTransactionId(search_string)) {
-                // Can be an TX format example:0x7ba31d707f49e0f154328e3075be0333b9a9dafaea55a67e7c2028120abc9db2
-                search_hint_text = 'Transaction id ' + search_string.toLowerCase();
-            }
-        } else if (!isNaN(search_string)) {
-            // isNaN behaves weirdly, isNaN('123abc') returns true hence it would be rejected,
-            // but isNaN(' ') and isNaN('') returns false, which we don't want.
-
-            let block_id = parseInt(search_string);
-
-            // Weird testing but it works. Do not pass when search_string is empty or just space.
-            // Only true numeric number like 10000 passes. And also block id should be equal or larger than 0.
-            if (!isNaN(block_id) && block_id >= 0) {
-                // Can be an block-id example:25000
-                search_hint_text = 'Block #' + block_id;
-            }
+        if (searchTimeoutId !== undefined) {
+            // Cancel former search wait
+            clearTimeout(searchTimeoutId);
         }
 
-        // Displays search hint
-        search_hint.textContent = search_hint_text;
+        // Wait for the user inputting to settle
+        searchTimeoutId = setTimeout(function () {
+            requestService.connectAndRequest('search', search_string, function (content) {
+                if (searchStateId !== stored_ssid) {
+                    // Another search was issued later, discard this
+                    console.debug("s_discarded");
+                    return;
+                }
+
+                let suggestionHTML = "";
+                for (let i = 0; i < content.length; i++) {
+                    let link_label;
+
+                    switch (content[i][0]) {
+                        case 'block_number':        link_label = "Block Number"; break;
+                        case 'block_hash':          link_label =  "Block"; break;
+                        case 'transaction_hash':    link_label =  "Transaction"; break;
+                        case 'normal_address':      link_label =  "Address"; break;
+                        case 'contract_address':    link_label =  "Contract Address"; break;
+                    }
+
+                    link_label += " " + content[i][1];
+
+                    suggestionHTML += `<li>${link_label}</li>`;
+                }
+
+                search_suggestions.innerHTML = suggestionHTML;
+            });
+        }, 250);
     });
 
     document.getElementById('search-form').addEventListener('submit', function () {
@@ -338,15 +259,103 @@
         loadingEnd();
     }
 
+    const aboutTagList = ['hash', 'miner', 'difficulty', 'gas_used', 'gas_limit',
+        'extra_data', 'nonce', 'sha3_uncles', 'size', 'internal_id'];
+    const ONE_NUKO = new BigNumber(10).pow(18);
+
+    function loadViewBlock($blockNumber) {
+        let content = ['number', $blockNumber, 'all', 'all'];
+
+        loadingStart();
+
+        requestService.connectAndRequest('block', content, function (response) {
+            if (response === false) {
+                return;
+            }
+
+            let uncles_html = "";
+            let transactions_html = "";
+
+            let uncles = response['uncles'];
+            for (let i in uncles) {
+                uncles_html += `#${uncles[i]['number']}<br>`;
+            }
+
+            let transactions = response['transactions'];
+
+            for (let i in transactions) {
+                let txValue = new BigNumber(transactions[i]['value']).div(ONE_NUKO);
+
+                transactions_html += `<div class="tx-list-element tx-sending">
+                        <span class="tx-list-title">Sending ${txValue} NUKO</span><br>
+                        ${transactions[i]['from']} <i class="fa fa-arrow-right" aria-hidden="true"></i> ${transactions[i]['to']}<br>
+                        ${transactions[i]['hash']}
+                    </div>`;
+            }
+
+
+            let about_html = "";
+
+            for (let i in aboutTagList) {
+                about_html += `<span class="mini-caption">${aboutTagList[i]}</span>
+                            <span class="captioned-text">${response[aboutTagList[i]]}</span>`;
+            }
+
+            div_contents.innerHTML =
+                `<div class="pure-g">
+            <div id="blockview-left" class="pure-u-1-8">
+                <div id="blockview-list">
+                    <span class="blockview-list-element">1</span>
+                    <span class="blockview-list-element">2</span>
+                    <span class="blockview-list-element">3</span>
+                    <span class="blockview-list-element">4</span>
+                    <span class="blockview-list-element">5</span>
+                    <span class="blockview-list-element">6</span>
+                    <span class="blockview-list-element">7</span>
+                    <span class="blockview-list-element">8</span>
+                    <span class="blockview-list-element">9</span>
+                    <span class="blockview-list-element">10</span>
+                    <span class="blockview-list-element">11</span>
+                </div>
+            </div>
+            <div class="pure-u-7-8">
+                <div id="blockview-right">
+                    <h1>Block #${response['number']}</h1>
+                    <div >
+                        <div class="block-time">
+                            <canvas id="canvas-block-time-clock" class="block-time-clock" height="200px" width="200px"></canvas>
+                        </div>
+                        <div class="block-about">
+                            ${about_html}
+                        </div>
+                    </div>
+                    <div>
+                        <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
+
+                        ${uncles_html}
+                    </div>
+                    <div>
+                        <h2>${response['transactions'].length} Transaction(s)</h2>
+
+                        ${transactions_html}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+            let cc = document.getElementById('canvas-block-time-clock').getContext('2d');
+            drawClock(cc, response['timestamp']);
+
+            loadingEnd();
+        });
+    }
+
     function loadingStart() {
         document.getElementById('loading').style.display = 'block';
     }
     function loadingEnd() {
         document.getElementById('loading').style.display = 'none';
     }
-
-    let cc = document.getElementById('temp').getContext('2d');
-    drawClock(cc, 1509680069);
 
     function drawClock(context, unixEpoch) {
         let date = new Date(unixEpoch * 1000);
@@ -418,6 +427,9 @@
         context.lineTo(100 + 60 * hsin, 100 - 60 * hcos);
         context.stroke();
     }
+
+
+    loadingEnd();
 </script>
 
 <footer>

@@ -1,0 +1,194 @@
+
+body {
+    margin: 1.5em 3em;
+}
+
+#loading {
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    top: 0;
+    left: 0;
+
+    text-align: center;
+    vertical-align: middle;
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+#title {
+    font-size: 2.15em;
+    text-decoration: none;
+    color: inherit;
+}
+
+#title:hover {
+    color: grey;
+}
+
+#menu {
+    display: inline-block;
+    width: 0;
+}
+
+#mini-statistics {
+    /*border: solid 1px lightgray;*/
+    overflow: hidden;
+
+    font-size: 0.8em;
+}
+
+#search-box {
+    margin: 1em 0;
+}
+
+#search-suggestion-list {
+    margin: 0;
+    padding: 0;
+}
+
+#search-suggestion-list li {
+    display: inline-block;
+    padding: 1em;
+    margin: 0.2em;
+    border-radius: 0.8em;
+    border: solid 1px black;
+}
+
+.search-suggestion-element {
+}
+
+.search-suggestion-element-selected {
+    box-shadow: gray 0 0 3px 1px;
+    -moz-box-shadow: gray 0 0 3px 1px;
+    -webkit-box-shadow: gray 0 0 3px 1px;;
+}
+
+.text-selectable {
+    /* Enable text selection */
+    -moz-user-select: text;
+    -ms-user-select: text;
+    -khtml-user-select: auto;
+    -webkit-user-select: auto;
+    -webkit-touch-callout: default;
+}
+
+
+/*
+ Home view
+  */
+
+.pure-form .input-text-highlight-red {
+    box-shadow: 0px 0px 6px red;
+    border: solid 1px red;
+}
+
+.input-text-highlight-green {
+
+}
+
+/*
+View Common
+*/
+
+h1 {
+    margin-top: 0;
+}
+
+.mini-caption {
+    color: gray;
+    font-size: 0.7em;
+    display: block;
+
+    /* Disable text selection */
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -khtml-user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.captioned-text {
+    padding-left: 1em;
+    word-break: break-all;
+    display: block;
+}
+
+.tx-list-element {
+    padding-left: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.tx-sending {
+    border-left: solid 10px #fde231;
+}
+
+.tx-list-title {
+    font-size: 1em;
+    font-weight: bold;
+}
+
+/*
+Blocks View
+ */
+
+#blockview-left {
+
+}
+
+#blockview-right {
+    padding-left: 2em;
+}
+
+#blockview-list {
+    height: 20em;
+    overflow-y: scroll;
+}
+
+#blockview-list-inner {
+
+}
+
+.blockview-list-element {
+    display: block;
+    text-align: center;
+}
+
+
+.blockview-list-element:last-child {
+    background:
+            repeating-linear-gradient(
+                    -45deg,
+                    white 0,
+                    white 0.5em,
+                    #AAA 0.5em,
+                    #AAA 1em
+            );
+    background-size: 150% 100%;
+    animation: move-right-to-left 0.5s linear infinite;
+}
+
+@keyframes move-right-to-left {
+    0% {
+        background-position: 0;
+    }
+    100% {
+        background-position: -1.414em;
+    }
+}
+
+.block-time {
+    display: inline-block;
+    text-align: center;
+    vertical-align: top;
+}
+
+.block-time-clock {
+    display: block;
+    height: 100px;
+    width: 100px;
+}
+
+.block-about {
+    margin-left: 1.5em;
+    display: inline-block;
+}
