@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 
 public class ExplorerBackend {
@@ -15,19 +16,23 @@ public class ExplorerBackend {
     private Thread converterThread;
     private ExplorerServer webSocketServer;
     private DatabaseManager databaseManager;
+    private ConfigLoader config;
 
     public void start() throws Exception {
         this.logger = LoggerFactory.getLogger("ExplorerBackend");
+
+        this.config = new ConfigLoader(new File("./config.properties"));
+        this.config.loadFromFile();
 
         this.web3jManager = new Web3jManager();
 
         // Connect to the nekonium-node (usually a go-nekonium client)
         // FIXME On IPC connection, quick mass data fetching like a catch up fetching cause an data corruption and stop an observer thread. maybe a web3j issue
-        this.web3jManager.connect(Web3jManager.ConnectionType.RPC, "http://127.0.0.1:8293", false, 100);
+        this.web3jManager.connect(config.getNodeConnectionType(), config.getNodeURL(), false, 100);
 
         // Initialize database
         this.databaseManager = new DatabaseManager();
-        this.databaseManager.init();
+        this.databaseManager.init(config.getDatabaseURL(), config.getDatabaseUser(), config.getDatabasePassword());
 
         // Start blockchain-to-database conversion
         this.converter = new BlockchainConverter(web3jManager, databaseManager);

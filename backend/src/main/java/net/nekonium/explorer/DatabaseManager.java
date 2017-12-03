@@ -10,12 +10,12 @@ public class DatabaseManager {
 
     private HikariDataSource dataSource;
 
-    public void init() throws SQLException {
+    public void init(String url, String user, String password) throws SQLException {
         final HikariConfig config = new HikariConfig();
 
-        config.setJdbcUrl("jdbc:mysql://localhost:3306/nek_blockchain");
-        config.setUsername("root");
-        config.setPassword("");
+        config.setJdbcUrl(url);
+        config.setUsername(user);
+        config.setPassword(password);
 
         this.dataSource = new HikariDataSource(config);
         // 接続してみる
