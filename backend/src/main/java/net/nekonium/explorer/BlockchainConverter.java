@@ -3,6 +3,7 @@ package net.nekonium.explorer;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import net.nekonium.explorer.util.IllegalBlockchainStateException;
+import net.nekonium.explorer.util.IllegalDatabaseStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;
@@ -214,12 +215,28 @@ public class BlockchainConverter implements Runnable {
             }
 
 
-            // First, insert the block
+            /* First, insert the block */
 
-            final PreparedStatement prpstmt = connection.prepareStatement(
-                    "INSERT INTO blocks VALUES " +
-                            "(NULL, ?, UNHEX(?), UNHEX(?), FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
-                            "UNHEX(?), ?)", RETURN_GENERATED_KEYS);
+            final PreparedStatement prpstmt;
+
+
+            final boolean isBlockZero = block.getNumber().compareTo(BigInteger.ZERO) == 0;
+
+            if (isBlockZero) {    // Block #0 is going through special process
+                /* Block #0 does't have a parent block, set it NULL */
+                prpstmt = connection.prepareStatement(
+                        "INSERT INTO blocks VALUES " +
+                                "(NULL, ?, UNHEX(?), UNHEX(?), NULL, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
+                                "UNHEX(?), ?, 0)", RETURN_GENERATED_KEYS);
+            } else {
+                /* Otherwise, it has a parent */
+                prpstmt = connection.prepareStatement(
+                        "INSERT INTO blocks SELECT " +
+                                "NULL, ?, UNHEX(?), UNHEX(?), internal_id, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
+                                "UNHEX(?), ?, 0 FROM blocks WHERE number = ? AND hash = UNHEX(?)", RETURN_GENERATED_KEYS);
+                // This is special statement, INSERT ~~ SELECT ~~, NOTE: using subquery referencing the same table won't work
+            }
+
 
             // TODO Every integer number on go-nekonium is arbitrary integer, it will overflow on mysql in future (distant future)
             n = 0;
@@ -236,7 +253,18 @@ public class BlockchainConverter implements Runnable {
             prpstmt.setString(++n, block.getSha3Uncles().substring(2));
             prpstmt.setString(++n, block.getSize().toString());
 
-            prpstmt.executeUpdate();
+            if (!isBlockZero) {
+                prpstmt.setString(++n, block.getNumber().subtract(BigInteger.ONE).toString());  // This block's parent's number
+                prpstmt.setString(++n, block.getParentHash().substring(2)); // Expected parent block's hash
+            }
+
+            final int affectedRow = prpstmt.executeUpdate();    // INSERT returns affected row
+
+            if (affectedRow != 1) { // Affected row has to be 1, not 0 or 2 or 333
+                throw new IllegalDatabaseStateException("INSERTed a new block into the database, but the affected row count is not 1 but [" + affectedRow + "], maybe parent relations are messed up?");
+                // Inserted rows won't permanently be recorded in the database, because it will soon be rollbacked
+            }
+
             // Get AUTO_INCLEMENT value the same time as the update execution
             final ResultSet generatedKeys = prpstmt.getGeneratedKeys();
             if (!generatedKeys.next()) {
@@ -253,8 +281,10 @@ public class BlockchainConverter implements Runnable {
 
                 final PreparedStatement prpstmt2 = connection.prepareStatement(
                         "INSERT INTO uncle_blocks VALUES " +
-                                "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), " +
-                                "?, UNHEX(?), ?)");
+                                "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), " +
+                                "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?)), " +  // Search for this uncle's parent block.
+                                // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
+                                "FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, UNHEX(?), ?)");
 
 
                 n = 0;
@@ -262,6 +292,8 @@ public class BlockchainConverter implements Runnable {
                 prpstmt2.setLong(++n, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
                 prpstmt2.setInt(++n, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
                 prpstmt2.setString(++n, uncleBlock.getHash().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getParentHash().substring(2));
+                prpstmt2.setString(++n, uncleBlock.getNumber().subtract(BigInteger.ONE).toString());    // Parent block's number
                 prpstmt2.setString(++n, uncleBlock.getParentHash().substring(2));
                 prpstmt2.setString(++n, uncleBlock.getTimestamp().toString());
                 prpstmt2.setString(++n, uncleBlock.getMiner().substring(2));
@@ -324,6 +356,10 @@ public class BlockchainConverter implements Runnable {
             // Throw back to where method called
             throw e;
         }
+    }
+
+    private void validChainCheck(Connection connection, BigInteger blockNumber) {
+
     }
 
     private class NormalSubscriber implements Action1<EthBlock> {

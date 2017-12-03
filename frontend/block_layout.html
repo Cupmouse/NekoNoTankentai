@@ -123,17 +123,36 @@
     let blocklistInner = document.getElementById('blockview-list-inner');
     let blocklist = document.getElementById('blockview-list');
 
+    let latestBlockNumber = -1; // Latest block number
     let blockListInitialized = false;
     let scrollAction = false; // Not to do scroll change if events are issued while performing it
     let elementHeight = -1; // Height of one block list element
     let nextTopBlockNum;    // Next block number will be added to the block list on BEGINNING
     let nextBottomBlockNum; // Next block number will be added to the block list on END
 
-    /* Initialize block list */
+    let wsBlockNumber = new WebSocket('ws://localhost:8080/block-number');
+    let messageCount = 0;
 
-    fillBlockList(20);
+    wsBlockNumber.onmessage = function (event) {
+        let beforeLatestBlockNumber = latestBlockNumber;
+        latestBlockNumber = event.data;
 
-    blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
+        if (messageCount === 0) {   // If this was the first message
+            /* Initialize block list */
+
+            fillBlockList(20);
+
+            blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
+        } else {
+
+            if (latestBlockNumber <= beforeLatestBlockNumber) {
+                /* Block chain rearrange happened (forking) */
+
+
+            }
+
+        }
+    };
 
     blocklist.addEventListener('scroll', function () {  // Add scroll event listener
         if (blockListInitialized && !scrollAction) {
@@ -150,7 +169,7 @@
             } else if (this.scrollTop >= blocklistInner.clientHeight - blocklist.clientHeight - elementHeight) {
                 /* Add more block elements on bottom of the list */
                 for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
-                    if (nextBottomBlockNum > getLatestBlockNumber() + 1) {  // Already showing the latest block + 1
+                    if (nextBottomBlockNum > latestBlockNumber + 1) {  // Already showing the latest block + 1
                         break;
                     }
                     addToBlockList('beforeEnd', nextBottomBlockNum++);    // Add an element on bottom of the list
@@ -161,10 +180,6 @@
         }
     });
 
-    function getLatestBlockNumber() {
-        return 100;
-    }
-
     function fillBlockList(blockNumber) {
         blocklistInner.innerHTML = '';  // Clear all elements
 
@@ -173,8 +188,6 @@
         addToBlockList('beforeEnd', blockNumber);  // Add a center block
 
         elementHeight = blocklistInner.clientHeight; // Get how much y-space is needed for just one element
-
-        let latestBlockNum = getLatestBlockNumber();
 
         nextTopBlockNum = blockNumber - 1;      // Next block number listed BEFORE the center block
         nextBottomBlockNum = blockNumber + 1;   // Next block number listed AFTER the center block
@@ -193,7 +206,7 @@
             // This would list all elements from zero to before the center block
         }
 
-        if (blockNumber + bottomBlocks > (latestBlockNum + 1)) {  // Check if this exceeds the upper limit of latest block number + 1
+        if (blockNumber + bottomBlocks > (latestBlockNumber + 1)) {  // Check if this exceeds the upper limit of latest block number + 1
             bottomBlocks = (latestBlockNum + 1) - blockNumber;
         }
 

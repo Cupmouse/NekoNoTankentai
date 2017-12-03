@@ -163,7 +163,7 @@ Blocks View
                     #AAA 0.5em,
                     #AAA 1em
             );
-    background-size: 150% 100%;
+    background-size: 200% 100%;
     animation: move-right-to-left 0.5s linear infinite;
 }
 

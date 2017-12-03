@@ -11,7 +11,7 @@
 </div>
 
 <script type="application/javascript">
-    let ws = new WebSocket('ws://localhost:8080/request');
+    let ws = new WebSocket('ws://localhost:8080/block-number');
 
     function log(text) {
         let element = document.getElementById("text");
@@ -24,10 +24,10 @@
     };
 
     ws.onopen = function () {
-        request('block', ['number', '14703', 'all', 'all']);
-        request('transaction', ['number_and_index', '14703', 0]);
-        request('search', '147031');
-        request('uncle', ['hash', '0xc8db2be0bc63f059bc5299675768327b10e741cfd27bd3f55d6ccc1eaf164c7b']);
+//        request('block', ['number', '14703', 'all', 'all']);
+//        request('transaction', ['number_and_index', '14703', 0]);
+//        request('search', '147031');
+//        request('uncle', ['hash', '0xc8db2be0bc63f059bc5299675768327b10e741cfd27bd3f55d6ccc1eaf164c7b']);
     };
 
     ws.onclose = function () {

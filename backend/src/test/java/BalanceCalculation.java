@@ -11,7 +11,7 @@ public class BalanceCalculation {
 
     public static final BigInteger BLOCK_REWARD = BigInteger.valueOf(7500000000000000000L);
 
-    public static void main(String[] args) {
+        public static void main(String[] args) {
         final DatabaseManager databaseManager = new DatabaseManager();
 
         Connection connection = null;
