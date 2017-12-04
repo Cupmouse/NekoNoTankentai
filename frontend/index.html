@@ -69,18 +69,51 @@
 </div>
 
 <script type="application/javascript">
+    loadingStart(); // Show loading screen (It should already be shown before this)
+
+    /* Common Declaration Start */
+    const ONE_NUKO = new BigNumber(10).pow(18);
+
     let div_contents = document.getElementById('contents');
     let search_box = document.getElementById('search-box');
     let search_suggestions = document.getElementById('search-suggestion-list');
 
-    const REGEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-    const REGEX_TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
+    let viewClosingHandler; // Called when closing current view, for listener unregistration
+
+    class BlockNumberStreamService {
+        constructor() {
+            this.listener = new Map();   // Listeners listening to the block number stream
+        }
+
+        startConnectingAndKeep() {
+            this.websocket = new WebSocket('ws://localhost:8080/block-number');
+
+            this.websocket.onclose = function () {  // Try to reconnect if connection is lost
+                console.log("Connection closed, retrying");
+                setInterval(this.startConnectingAndKeep, 5000);
+            };
+
+            let self = this;
+
+            this.websocket.onmessage = function (event) {
+                self.listener.forEach((v, k) => k(event.data)); // Call listeners
+            };
+        }
+
+        registerListener(id, listener) {
+            this.listener.set(id, listener);
+        }
+
+        removeListener(id) {
+            this.listener.delete(id);
+        }
+    }
 
     class RequestService {
         constructor() {
             this.connected = false;
             this.connecting = false;
-            this.id = 0;
+            this.connId = 0;
         }
 
         connectIfNot() {
@@ -120,7 +153,7 @@
             };
 
             this.nonce = 0; // Initial nonce is 0
-            this.id++;  // Increment connection id
+            this.connId++;  // Increment connection id
         }
 
         connectAndRequest(demand, content, callback) {
@@ -144,10 +177,10 @@
             } else {
                 /* Send message to server, retry if connection is not ready */
                 let self = this;
-                let storedId = this.id;
+                let storedConnId = this.connId;
 
                 let timerId = setInterval(function () {
-                    if (self.id !== storedId) {
+                    if (self.connId !== storedConnId) {
                         // Connection changed, maybe reestablished
                         clearInterval(timerId); // This function is no longer be called
                         console.debug("discarded#1");
@@ -167,18 +200,19 @@
         }
     }
 
-    let requestService = new RequestService();
+    let blockNumberStreamService = new BlockNumberStreamService();
+    blockNumberStreamService.startConnectingAndKeep();  // Start connecting to the block number streaming service asynchronously
+    let requestService = new RequestService();      // Request service will connect to the server in future when it is needed
 
     let searchStateId = 0;
     let searchTimeoutId;
 
-    // Registering search box input event
-    search_box.addEventListener('input', function () {
+    search_box.addEventListener('input', function () {  // Registering search box input event
         // Gets the inputted string from the search box
         let search_string = search_box.value;
 
         if (search_string.length === 0) {
-            // If search word is empty string, going back to home
+            // todo If search word is empty string, show nothing
         }
 
         let stored_ssid = ++searchStateId;
@@ -219,142 +253,23 @@
         }, 250);
     });
 
-    document.getElementById('search-form').addEventListener('submit', function () {
+    document.getElementById('search-form').addEventListener('submit', function () { // Event listener for search confirm
         alert("is it");
         return false;
     });
-
-//    loadViewHome();
-
-    function isAddress(addr) {
-        // TODO Upper case lower case error check
-
-        return REGEX_ADDRESS.test(addr);
-    }
-
-    function isTransactionId(tx_id) {
-        return REGEX_TRANSACTION.test(tx_id);
-    }
-
-    function loadViewHome() {
-        loadingStart();
-
-        div_contents.innerHTML =
-`<div class="pure-u-1">
-    <div id="latest_updates"></div>
-</div>`;
-        // TODO Registering events
-
-        loadingEnd();
-    }
-
-    function loadViewAddress($address) {
-        loadingStart();
-
-        div_contents.innerHTML =
-            `<div class="pure-u-1">
-    <h1>Address ${address}</h1>
-</div>`;
-
-        loadingEnd();
-    }
-
-    const aboutTagList = ['hash', 'miner', 'difficulty', 'gas_used', 'gas_limit',
-        'extra_data', 'nonce', 'sha3_uncles', 'size', 'internal_id'];
-    const ONE_NUKO = new BigNumber(10).pow(18);
-
-    function loadViewBlock($blockNumber) {
-        let content = ['number', $blockNumber, 'all', 'all'];
-
-        loadingStart();
-
-        requestService.connectAndRequest('block', content, function (response) {
-            if (response === false) {
-                return;
-            }
-
-            let uncles_html = "";
-            let transactions_html = "";
-
-            let uncles = response['uncles'];
-            for (let i in uncles) {
-                uncles_html += `#${uncles[i]['number']}<br>`;
-            }
-
-            let transactions = response['transactions'];
-
-            for (let i in transactions) {
-                let txValue = new BigNumber(transactions[i]['value']).div(ONE_NUKO);
-
-                transactions_html += `<div class="tx-list-element tx-sending">
-                        <span class="tx-list-title">Sending ${txValue} NUKO</span><br>
-                        ${transactions[i]['from']} <i class="fa fa-arrow-right" aria-hidden="true"></i> ${transactions[i]['to']}<br>
-                        ${transactions[i]['hash']}
-                    </div>`;
-            }
-
-
-            let about_html = "";
-
-            for (let i in aboutTagList) {
-                about_html += `<span class="mini-caption">${aboutTagList[i]}</span>
-                            <span class="captioned-text">${response[aboutTagList[i]]}</span>`;
-            }
-
-            div_contents.innerHTML =
-                `<div class="pure-g">
-            <div id="blockview-left" class="pure-u-1-8">
-                <div id="blockview-list">
-                    <span class="blockview-list-element">1</span>
-                    <span class="blockview-list-element">2</span>
-                    <span class="blockview-list-element">3</span>
-                    <span class="blockview-list-element">4</span>
-                    <span class="blockview-list-element">5</span>
-                    <span class="blockview-list-element">6</span>
-                    <span class="blockview-list-element">7</span>
-                    <span class="blockview-list-element">8</span>
-                    <span class="blockview-list-element">9</span>
-                    <span class="blockview-list-element">10</span>
-                    <span class="blockview-list-element">11</span>
-                </div>
-            </div>
-            <div class="pure-u-7-8">
-                <div id="blockview-right">
-                    <h1>Block #${response['number']}</h1>
-                    <div >
-                        <div class="block-time">
-                            <canvas id="canvas-block-time-clock" class="block-time-clock" height="200px" width="200px"></canvas>
-                        </div>
-                        <div class="block-about">
-                            ${about_html}
-                        </div>
-                    </div>
-                    <div>
-                        <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
-
-                        ${uncles_html}
-                    </div>
-                    <div>
-                        <h2>${response['transactions'].length} Transaction(s)</h2>
-
-                        ${transactions_html}
-                    </div>
-                </div>
-            </div>
-        </div>`;
-
-            let cc = document.getElementById('canvas-block-time-clock').getContext('2d');
-            drawClock(cc, response['timestamp']);
-
-            loadingEnd();
-        });
-    }
 
     function loadingStart() {
         document.getElementById('loading').style.display = 'block';
     }
     function loadingEnd() {
         document.getElementById('loading').style.display = 'none';
+    }
+
+    function callViewClosingHandlerIfExist() {
+        if (viewClosingHandler !== undefined) { // Call view closing handler if exists
+            viewClosingHandler();
+            viewClosingHandler = undefined;
+        }
     }
 
     function drawClock(context, unixEpoch) {
@@ -428,8 +343,295 @@
         context.stroke();
     }
 
+    /* Common Declaration End */
 
-    loadingEnd();
+    /* Home View Declaration Start */
+
+    function loadViewHome() {
+        loadingStart();
+
+        callViewClosingHandlerIfExist();
+
+        div_contents.innerHTML =
+            `<div class="pure-u-1">
+    <div id="latest_updates"></div>
+</div>`;
+        // TODO Registering events
+
+        loadingEnd();
+    }
+
+    /* Home View Declaration End */
+
+    /* Block View Declaration Start */
+
+    const MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE = 100;  // This can't be small enough to fit the biggest screen in the world
+    const BLOCK_LIST_ELEMENTS_LOAD_N = 20;  // Maximum of this number of block list elements are added each time when scroll change is performed
+    const ABOUT_TAG_LIST = ['hash', 'miner', 'difficulty', 'gas_used', 'gas_limit',
+        'extra_data', 'nonce', 'sha3_uncles', 'size', 'internal_id'];
+
+    let blocklistInner; // Div element which is is block-list-inner
+    let blocklist;      // Div element which id is block-list
+
+    let latestBlockNumber = undefined; // Latest block number known by the client
+    let blockListInitialized = false;
+    let scrollCheckIntervalId;  // setInterval id of scrollCheck calling
+    let scrollAction = false; // Not to do scroll change if events are issued while performing it
+    let elementHeight = -1; // Height of one block list element
+    let nextTopBlockNum;    // Next block number will be added to the block list on BEGINNING
+    let nextBottomBlockNum; // Next block number will be added to the block list on END including a working block
+
+    function loadViewBlock($blockNumber) {
+        let content = ['number', $blockNumber, 'all', 'all'];
+
+        loadingStart();
+
+        requestService.connectAndRequest('block', content, function(response) {
+            blockRequestCallback(response);
+            loadingEnd();
+        });
+    }
+
+    function blockRequestCallback(response) {
+        if (response === false) {
+            return;
+        }
+
+        let uncles_html = "";
+        let transactions_html = "";
+
+        let uncles = response['uncles'];
+        for (let i in uncles) {
+            uncles_html += `#${uncles[i]['number']}<br>`;
+        }
+
+        let transactions = response['transactions'];
+
+        for (let i in transactions) {
+            let txValue = new BigNumber(transactions[i]['value']).div(ONE_NUKO);
+
+            transactions_html += `<div class="tx-list-element tx-sending">
+                        <span class="tx-list-title">Sending ${txValue} NUKO</span><br>
+                        ${transactions[i]['from']} <i class="fa fa-arrow-right" aria-hidden="true"></i> ${transactions[i]['to']}<br>
+                        ${transactions[i]['hash']}
+                    </div>`;
+        }
+
+
+        let about_html = "";
+
+        for (let i in ABOUT_TAG_LIST) {
+            about_html += `<span class="mini-caption">${ABOUT_TAG_LIST[i]}</span>
+                            <span class="captioned-text">${response[ABOUT_TAG_LIST[i]]}</span>`;
+        }
+
+        div_contents.innerHTML =
+            `<div class="pure-g">
+            <div id="blockview-left" class="pure-u-1-8">
+                <div id="blockview-list">
+                    <span class="blockview-list-element">1</span>
+                    <span class="blockview-list-element">2</span>
+                    <span class="blockview-list-element">3</span>
+                    <span class="blockview-list-element">4</span>
+                    <span class="blockview-list-element">5</span>
+                    <span class="blockview-list-element">6</span>
+                    <span class="blockview-list-element">7</span>
+                    <span class="blockview-list-element">8</span>
+                    <span class="blockview-list-element">9</span>
+                    <span class="blockview-list-element">10</span>
+                    <span class="blockview-list-element">11</span>
+                </div>
+            </div>
+            <div class="pure-u-7-8">
+                <div id="blockview-right">
+                    <h1>Block #${response['number']}</h1>
+                    <div >
+                        <div class="block-time">
+                            <canvas id="canvas-block-time-clock" class="block-time-clock" height="200px" width="200px"></canvas>
+                        </div>
+                        <div class="block-about">
+                            ${about_html}
+                        </div>
+                    </div>
+                    <div>
+                        <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
+
+                        ${uncles_html}
+                    </div>
+                    <div>
+                        <h2>${response['transactions'].length} Transaction(s)</h2>
+
+                        ${transactions_html}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        let cc = document.getElementById('canvas-block-time-clock').getContext('2d');
+        drawClock(cc, response['timestamp']);
+
+        blocklistInner = document.getElementById('blockview-list-inner');
+        blocklist = document.getElementById('blockview-list');
+
+        blocklist.addEventListener('scroll', scrollEvent);  // Add event listener for block list scroll event
+
+        scrollCheckIntervalId = setInterval(function () {
+            console.log("called");
+            scrollEvent();
+        }, 1000);   // This is for up scroll glitch not for ie fail-safe
+
+        blockNumberStreamService.registerListener('block_list', function (blockNumber) {    // Register listener for real-time block list update
+            let beforeLatestBlockNumber = latestBlockNumber;
+            latestBlockNumber = new BigNumber(blockNumber);
+
+            if (beforeLatestBlockNumber === undefined) {   // If this was the first message
+                /* Initialize block list */
+
+//            fillBlockList(new BigNumber(500));
+
+                fillBlockList(latestBlockNumber.sub(16));
+
+                blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
+            } else {
+                if (latestBlockNumber.comparedTo(beforeLatestBlockNumber) < 0) {
+                    /* Block chain reorganization happened (forking) */
+
+                    nextBottomBlockNum = latestBlockNumber.add(1);
+                    let i = nextBottomBlockNum;
+
+                    /* Removing list elements who got deleted from the blockchain */
+                    while (i.comparedTo(beforeLatestBlockNumber) <= 0) {
+                        let rmv = document.getElementById('blockview-list-element-n' + i);
+                        rmv.parentNode.removeChild(rmv);
+                    }
+                } else {
+
+                    if (nextBottomBlockNum.comparedTo(beforeLatestBlockNumber.add(1)) === 0) {  // Latest block are shown
+//                let scrollBottom = blocklist.scrollTop === (blocklistInner.clientHeight - blocklist.clientHeight);
+
+                        addToBlockList('beforeEnd', nextBottomBlockNum);
+                        nextBottomBlockNum = nextBottomBlockNum.add(1);
+
+//                if (scrollBottom) { // If scroll was max, set max again
+//                    blocklist.scrollTop = blocklistInner.clientHeight - blocklist.clientHeight;
+//                }
+                    }
+                }
+            }
+        });
+    }
+
+    function scrollEvent() {  // Add scroll event listener
+        if (blockListInitialized && !scrollAction) {
+//            scrollAction = true;
+
+            if (blocklist.scrollTop <= elementHeight) {
+                /* Add more block elements on top of the list */
+                let i;
+
+                for (i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
+                    if (nextTopBlockNum.comparedTo(0) < 0) {  // Already showing the oldest block (#0)
+                        break;  // Don't add elements anymore
+                    }
+                    addToBlockList('afterBegin', nextTopBlockNum);   // Add an element on top of the list
+                    nextTopBlockNum = nextTopBlockNum.sub(1);
+                }
+
+                if (i !== 0) {  // If elements are added
+                    blocklist.scrollTop = elementHeight * (i + 1);  // Set scroll position to where it was, for interval execution
+                }
+            } else if (blocklist.scrollTop >= blocklistInner.clientHeight - blocklist.clientHeight - elementHeight) {
+                /* Add more block elements on bottom of the list */
+                for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
+                    if (nextBottomBlockNum.comparedTo(latestBlockNumber.add(1)) > 0) {  // Already showing the latest block + 1
+                        break;
+                    }
+
+                    addToBlockList('beforeEnd', nextBottomBlockNum);    // Add an element on bottom of the list
+                    nextBottomBlockNum = nextBottomBlockNum.add(1);
+                }
+            }
+
+            scrollAction = false;
+        }
+    }
+
+    function fillBlockList(blockNumber) {
+        blocklistInner.innerHTML = '';  // Clear all elements
+
+        /* Fill block list with initial elements around the blockNumber */
+
+        addToBlockList('beforeEnd', blockNumber);  // Add a center block
+
+        elementHeight = blocklistInner.clientHeight; // Get how much y-space is needed for just one element
+
+        nextTopBlockNum = blockNumber.sub(1);      // Next block number listed BEFORE the center block
+        nextBottomBlockNum = blockNumber.add(1);   // Next block number listed AFTER the center block
+
+        let topBlocks = Math.ceil(blocklist.clientHeight / elementHeight) + 1;  // Default value of the amount of elements listed before the center block.
+        // Total height should be one element's height higher from the same as the list div height, if this number of elements are stacked
+
+        if (topBlocks > MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE) {    // This stops infinite loop to happen if something went wrong
+            topBlocks = MAX_INIT_BLOCK_LIST_ELEMENTS_PER_SIDE;
+        }
+
+        let bottomBlocks = topBlocks;   // Both default amount of bottom and top blocks are the same
+
+        if (blockNumber.sub(topBlocks).comparedTo(0) < 0) {  // Check if this exceeds the lower limit of zero (minimum block number)
+            topBlocks = blockNumber;    // Think blockNumber as the amount of blocks remaining on top of the center block.
+            // This would list all elements from zero to before the center block
+        }
+
+        if (blockNumber.add(bottomBlocks).comparedTo(latestBlockNumber.add(1)) > 0) {  // Check if this exceeds the upper limit of latest block number + 1
+            bottomBlocks = (latestBlockNumber.add(1)).sub(blockNumber).toNumber();
+        }
+
+        /* Most fun part! Add elements to the HTML */
+
+        for (let i = 0; i < topBlocks; i++) {
+            addToBlockList('afterBegin', nextTopBlockNum);    // Add element before the center block, watch out for decrement
+            nextTopBlockNum = nextTopBlockNum.sub(1);
+        }
+
+        for (let i = 0; i < bottomBlocks; i++) {   // Add predecessors of the block
+            addToBlockList('beforeEnd', nextBottomBlockNum);
+            nextBottomBlockNum = nextBottomBlockNum.add(1);
+        }
+
+        /* Try to set scroll bar where the center block become center of the list */
+
+        let yscroll = Math.round(elementHeight * (topBlocks + 0.5) - blocklist.clientHeight / 2);
+        let yscrollMax = blocklistInner.clientHeight - blocklist.clientHeight;
+
+        yscroll = Math.max(0, Math.min(yscroll, yscrollMax));   // Cannot scroll to negative or outside from an box
+
+        blocklist.scrollTop = yscroll;  // Set scroll bar
+    }
+
+    function addToBlockList(position, blockNumber) {
+        blocklistInner.insertAdjacentHTML(position, `<span id="blockview-list-element-n${blockNumber}" class="blockview-list-element">${blockNumber}</span>`);
+    }
+
+    /* Block View Declaration End */
+
+    /* Address View Declaration Start */
+
+    function loadViewAddress($address) {
+        loadingStart();
+
+        div_contents.innerHTML =
+            `<div class="pure-u-1">
+    <h1>Address ${address}</h1>
+</div>`;
+
+        loadingEnd();
+    }
+
+    /* Address View Declaration End */
+
+
+    loadViewHome();
+    loadingEnd();   // Loading finished, close loading screen (loadViewHome close that...)
 </script>
 
 <footer>

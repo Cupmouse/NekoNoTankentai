@@ -8,6 +8,7 @@ import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -18,11 +19,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 @ServerEndpoint("/block-number")
 public class BlockNumberEndPoint {
 
+    private static String lastBlockNumber;
     private static Queue<Session> sessionQueue = new ConcurrentLinkedQueue<>();
 
     @OnOpen
     public void onSessionOpen(Session session) {
         sessionQueue.add(session);
+        session.getAsyncRemote().sendText(lastBlockNumber);
     }
 
     @OnClose
@@ -38,6 +41,7 @@ public class BlockNumberEndPoint {
 
     public static void onNewBlock(EthBlock.Block block) {
         final String message = block.getNumber().toString();
+        lastBlockNumber = message;
 
         // TODO 多分非同期なのでエラーが起こる
         for (Session session : sessionQueue) {

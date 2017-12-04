@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./css/font-awesome.min.css">
     <link rel="stylesheet" href="./css/main.css">
     <script type="application/javascript" src="js/Chart.min.js"></script>
+    <script type="application/javascript" src="js/bignumber.min.js"></script>
 </head>
 <body>
 <header>
@@ -123,62 +124,97 @@
     let blocklistInner = document.getElementById('blockview-list-inner');
     let blocklist = document.getElementById('blockview-list');
 
-    let latestBlockNumber = -1; // Latest block number
+    let latestBlockNumber = undefined; // Latest block number
     let blockListInitialized = false;
+    let scrollCheckIntervalId;  // setInterval id of scrollCheck calling
     let scrollAction = false; // Not to do scroll change if events are issued while performing it
     let elementHeight = -1; // Height of one block list element
     let nextTopBlockNum;    // Next block number will be added to the block list on BEGINNING
-    let nextBottomBlockNum; // Next block number will be added to the block list on END
+    let nextBottomBlockNum; // Next block number will be added to the block list on END including a working block
 
     let wsBlockNumber = new WebSocket('ws://localhost:8080/block-number');
-    let messageCount = 0;
 
     wsBlockNumber.onmessage = function (event) {
         let beforeLatestBlockNumber = latestBlockNumber;
-        latestBlockNumber = event.data;
+        latestBlockNumber = new BigNumber(event.data);
 
-        if (messageCount === 0) {   // If this was the first message
+        if (beforeLatestBlockNumber === undefined) {   // If this was the first message
             /* Initialize block list */
 
-            fillBlockList(20);
+//            fillBlockList(new BigNumber(500));
+
+            fillBlockList(latestBlockNumber.sub(16));
 
             blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
         } else {
+            if (latestBlockNumber.comparedTo(beforeLatestBlockNumber) < 0) {
+                /* Block chain reorganization happened (forking) */
 
-            if (latestBlockNumber <= beforeLatestBlockNumber) {
-                /* Block chain rearrange happened (forking) */
+                nextBottomBlockNum = latestBlockNumber.add(1);
+                let i = nextBottomBlockNum;
 
+                /* Removing list elements who got deleted from the blockchain */
+                while (i.comparedTo(beforeLatestBlockNumber) <= 0) {
+                    let rmv = document.getElementById('blockview-list-element-n' + i);
+                    rmv.parentNode.removeChild(rmv);
+                }
+            } else {
 
+                if (nextBottomBlockNum.comparedTo(beforeLatestBlockNumber.add(1)) === 0) {  // Latest block are shown
+//                let scrollBottom = blocklist.scrollTop === (blocklistInner.clientHeight - blocklist.clientHeight);
+
+                    addToBlockList('beforeEnd', nextBottomBlockNum);
+                    nextBottomBlockNum = nextBottomBlockNum.add(1);
+
+//                if (scrollBottom) { // If scroll was max, set max again
+//                    blocklist.scrollTop = blocklistInner.clientHeight - blocklist.clientHeight;
+//                }
+                }
             }
-
         }
     };
 
-    blocklist.addEventListener('scroll', function () {  // Add scroll event listener
-        if (blockListInitialized && !scrollAction) {
-            scrollAction = true;
+    blocklist.addEventListener('scroll', scrollEvent);
 
-            if (this.scrollTop <= elementHeight) {
+    scrollCheckIntervalId = setInterval(function () {
+        console.log("called");
+        scrollEvent();
+    }, 1000);   // This is for up scroll glitch more for ie fail-safe
+
+    function scrollEvent() {  // Add scroll event listener
+        if (blockListInitialized && !scrollAction) {
+//            scrollAction = true;
+
+            if (blocklist.scrollTop <= elementHeight) {
                 /* Add more block elements on top of the list */
-                for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
-                    if (nextTopBlockNum < 0) {  // Already showing the oldest block (#0)
+                let i;
+
+                for (i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
+                    if (nextTopBlockNum.comparedTo(0) < 0) {  // Already showing the oldest block (#0)
                         break;  // Don't add elements anymore
                     }
-                    addToBlockList('afterBegin', nextTopBlockNum--);   // Add an element on top of the list
+                    addToBlockList('afterBegin', nextTopBlockNum);   // Add an element on top of the list
+                    nextTopBlockNum = nextTopBlockNum.sub(1);
                 }
-            } else if (this.scrollTop >= blocklistInner.clientHeight - blocklist.clientHeight - elementHeight) {
+
+                if (i !== 0) {  // If elements are added
+                    blocklist.scrollTop = elementHeight * (i + 1);  // Set scroll position to where it was, for interval execution
+                }
+            } else if (blocklist.scrollTop >= blocklistInner.clientHeight - blocklist.clientHeight - elementHeight) {
                 /* Add more block elements on bottom of the list */
                 for (let i = 0; i < BLOCK_LIST_ELEMENTS_LOAD_N; i++) {
-                    if (nextBottomBlockNum > latestBlockNumber + 1) {  // Already showing the latest block + 1
+                    if (nextBottomBlockNum.comparedTo(latestBlockNumber.add(1)) > 0) {  // Already showing the latest block + 1
                         break;
                     }
-                    addToBlockList('beforeEnd', nextBottomBlockNum++);    // Add an element on bottom of the list
+
+                    addToBlockList('beforeEnd', nextBottomBlockNum);    // Add an element on bottom of the list
+                    nextBottomBlockNum = nextBottomBlockNum.add(1);
                 }
             }
 
             scrollAction = false;
         }
-    });
+    }
 
     function fillBlockList(blockNumber) {
         blocklistInner.innerHTML = '';  // Clear all elements
@@ -189,8 +225,8 @@
 
         elementHeight = blocklistInner.clientHeight; // Get how much y-space is needed for just one element
 
-        nextTopBlockNum = blockNumber - 1;      // Next block number listed BEFORE the center block
-        nextBottomBlockNum = blockNumber + 1;   // Next block number listed AFTER the center block
+        nextTopBlockNum = blockNumber.sub(1);      // Next block number listed BEFORE the center block
+        nextBottomBlockNum = blockNumber.add(1);   // Next block number listed AFTER the center block
 
         let topBlocks = Math.ceil(blocklist.clientHeight / elementHeight) + 1;  // Default value of the amount of elements listed before the center block.
         // Total height should be one element's height higher from the same as the list div height, if this number of elements are stacked
@@ -201,23 +237,25 @@
 
         let bottomBlocks = topBlocks;   // Both default amount of bottom and top blocks are the same
 
-        if (blockNumber - topBlocks < 0) {  // Check if this exceeds the lower limit of zero (minimum block number)
+        if (blockNumber.sub(topBlocks).comparedTo(0) < 0) {  // Check if this exceeds the lower limit of zero (minimum block number)
             topBlocks = blockNumber;    // Think blockNumber as the amount of blocks remaining on top of the center block.
             // This would list all elements from zero to before the center block
         }
 
-        if (blockNumber + bottomBlocks > (latestBlockNumber + 1)) {  // Check if this exceeds the upper limit of latest block number + 1
-            bottomBlocks = (latestBlockNum + 1) - blockNumber;
+        if (blockNumber.add(bottomBlocks).comparedTo(latestBlockNumber.add(1)) > 0) {  // Check if this exceeds the upper limit of latest block number + 1
+            bottomBlocks = (latestBlockNumber.add(1)).sub(blockNumber).toNumber();
         }
 
         /* Most fun part! Add elements to the HTML */
 
         for (let i = 0; i < topBlocks; i++) {
-            addToBlockList('afterBegin', nextTopBlockNum--);    // Add element before the center block, watch out for decrement
+            addToBlockList('afterBegin', nextTopBlockNum);    // Add element before the center block, watch out for decrement
+            nextTopBlockNum = nextTopBlockNum.sub(1);
         }
 
         for (let i = 0; i < bottomBlocks; i++) {   // Add predecessors of the block
-            addToBlockList('beforeEnd', nextBottomBlockNum++);
+            addToBlockList('beforeEnd', nextBottomBlockNum);
+            nextBottomBlockNum = nextBottomBlockNum.add(1);
         }
 
         /* Try to set scroll bar where the center block become center of the list */
