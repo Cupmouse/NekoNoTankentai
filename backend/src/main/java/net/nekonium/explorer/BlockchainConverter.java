@@ -1,13 +1,10 @@
 package net.nekonium.explorer;
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 import net.nekonium.explorer.util.IllegalBlockchainStateException;
 import net.nekonium.explorer.util.IllegalDatabaseStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;
-import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.response.EthBlock;
 import org.web3j.protocol.core.methods.response.Transaction;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
@@ -110,7 +107,7 @@ public class BlockchainConverter implements Runnable {
         try {
             nodeBlockNumber = this.web3jManager.getWeb3j().ethBlockNumber().send().getBlockNumber();
         } catch (IOException e) {
-            this.logger.error("An error occurred when getting executing eth_blockNumber method call to the nekonium node");
+            this.logger.error("An error occurred when executing eth_blockNumber method call on the nekonium node");
 
             // Stop converter
             this.stop = true;
@@ -120,6 +117,35 @@ public class BlockchainConverter implements Runnable {
         if (nodeBlockNumber.compareTo(catchupStart) > 0) {
             // Latest block number is grater than the number on the database
             // Catchup fetch is needed
+
+            if (catchupStart.compareTo(BigInteger.ZERO) > 0) {
+                // Before catchup fetch, check parents relation
+                // Because last time before the program closed, it could have fetched a block to be forked block
+
+                final EthBlock.Block block;
+
+                try {
+                    block = web3jManager.getWeb3j().ethGetBlockByNumber(DefaultBlockParameter.valueOf(catchupStart.subtract(BigInteger.ONE)), true).send().getBlock();
+                } catch (IOException e) {
+                    this.logger.error("An error occurred when getting a block for parent relation check");
+                    return;
+                }
+
+//                // TODO fetch valid blocks and mark other already in the database as invalid
+//
+//                try {
+//                    checkParentsAndMarkForked(connection, catchupStart, block.getParentHash());
+//                    connection.commit();
+//                } catch (SQLException e) {
+//                    try {
+//                        connection.rollback();
+//                    } catch (SQLException e1) {
+//                        e1.printStackTrace();
+//                    }
+//                    this.logger.error("");
+//                    return;
+//                }
+            }
 
             // Fetching all block data from catchupStart to the latest block, this is catchup fetch
             this.logger.info("A catchup fetch is starting from the block #{} to #{}", catchupStart.toString(), nodeBlockNumber.toString());
@@ -172,6 +198,30 @@ public class BlockchainConverter implements Runnable {
         }
     }
 
+    private void insertBlockAndParents(Connection connection, EthBlock.Block block) throws SQLException, IOException, IllegalBlockchainStateException, IllegalDatabaseStateException {
+
+        /* Check if there is the parent block record on the database */
+        final PreparedStatement prpstmt = connection.prepareStatement("SELECT 1 FROM blocks WHERE number = ? AND hash = UNHEX(?)");
+        prpstmt.setString(1, block.getNumber().subtract(BigInteger.ONE).toString());
+        prpstmt.setString(2, block.getParentHash());
+
+        final ResultSet resultSet = prpstmt.executeQuery();
+
+        if (!resultSet.next()) {
+            /* Parent record has not fetched */
+
+            prpstmt.close();
+
+            final EthBlock.Block parentBlock = web3jManager.getWeb3j().ethGetBlockByNumber(DefaultBlockParameter.valueOf(block.getNumber().subtract(BigInteger.ONE)), true).send().getBlock();
+
+            insertBlockAndParents(connection, parentBlock);
+        } else {
+            prpstmt.close();
+        }
+
+        insertBlock(connection, block);
+    }
+
     /**
      * Commit all of the data involving {@code block}, including uncleBlocks, which sends sync request for nekonium node
      *
@@ -180,200 +230,249 @@ public class BlockchainConverter implements Runnable {
      * @throws SQLException
      * @throws IOException
      */
-    private void commitBlock(Connection connection, EthBlock.Block block) throws SQLException, IOException, IllegalBlockchainStateException {
+    private void insertBlock(Connection connection, EthBlock.Block block) throws SQLException, IOException, IllegalBlockchainStateException, IllegalDatabaseStateException {
         int n;
 
-        try {
-            // Get all of uncles blocks in advance if it exist
+        // todo insert block row count check?
 
-            final List<String> uncleHashes = block.getUncles();
-            final EthBlock.Block[] uncleBlocks = new EthBlock.Block[uncleHashes.size()];
+        // Get all of uncles blocks in advance if it exist
 
-            if (uncleHashes.size() > 0) {
-                for (int i = 0; i < uncleHashes.size(); i++) {
-                    // Get by block hash MAYBE able to retrieve forked blocks, otherwise this function call can fail
-                    final EthBlock ethBlock = web3jManager.getWeb3j().ethGetUncleByBlockHashAndIndex(block.getHash(), BigInteger.valueOf(i)).send();
-                    uncleBlocks[i] = ethBlock.getBlock();
-                }
+        final List<String> uncleHashes = block.getUncles();
+        final EthBlock.Block[] uncleBlocks = new EthBlock.Block[uncleHashes.size()];
+
+        if (uncleHashes.size() > 0) {
+            for (int i = 0; i < uncleHashes.size(); i++) {
+                // Get by block hash MAYBE able to retrieve forked blocks, otherwise this function call can fail
+                final EthBlock ethBlock = web3jManager.getWeb3j().ethGetUncleByBlockHashAndIndex(block.getHash(), BigInteger.valueOf(i)).send();
+                uncleBlocks[i] = ethBlock.getBlock();
             }
-
-            // Get all of transaction receipt too
-            final List<EthBlock.TransactionResult> transactionResults = block.getTransactions();
-            final Transaction[] transactions = new Transaction[transactionResults.size()];
-            final TransactionReceipt[] transactionReceipts = new TransactionReceipt[transactionResults.size()];
-
-            for (int i = 0; i < transactions.length; i++) {
-                transactions[i] = (Transaction) transactionResults.get(i).get();
-
-                final Optional<TransactionReceipt> transactionReceiptOptional = web3jManager.getWeb3j().ethGetTransactionReceipt(transactions[i].getHash()).send().getTransactionReceipt();
-
-                if (!transactionReceiptOptional.isPresent()) {
-                    throw new IllegalBlockchainStateException("An transaction receipt of a transaction included in the requested block not exist on the blockchain");
-                }
-
-                transactionReceipts[i] = transactionReceiptOptional.get();
-            }
-
-
-            /* First, insert the block */
-
-            final PreparedStatement prpstmt;
-
-
-            final boolean isBlockZero = block.getNumber().compareTo(BigInteger.ZERO) == 0;
-
-            if (isBlockZero) {    // Block #0 is going through special process
-                /* Block #0 does't have a parent block, set it NULL */
-                prpstmt = connection.prepareStatement(
-                        "INSERT INTO blocks VALUES " +
-                                "(NULL, ?, UNHEX(?), UNHEX(?), NULL, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
-                                "UNHEX(?), ?, 0)", RETURN_GENERATED_KEYS);
-            } else {
-                /* Otherwise, it has a parent */
-                prpstmt = connection.prepareStatement(
-                        "INSERT INTO blocks SELECT " +
-                                "NULL, ?, UNHEX(?), UNHEX(?), internal_id, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
-                                "UNHEX(?), ?, 0 FROM blocks WHERE number = ? AND hash = UNHEX(?)", RETURN_GENERATED_KEYS);
-                // This is special statement, INSERT ~~ SELECT ~~, NOTE: using subquery referencing the same table won't work
-            }
-
-
-            // TODO Every integer number on go-nekonium is arbitrary integer, it will overflow on mysql in future (distant future)
-            n = 0;
-            prpstmt.setString(++n, block.getNumber().toString());
-            prpstmt.setString(++n, block.getHash().substring(2));
-            prpstmt.setString(++n, block.getParentHash().substring(2));
-            prpstmt.setString(++n, block.getTimestamp().toString());
-            prpstmt.setString(++n, block.getMiner().substring(2));
-            prpstmt.setString(++n, block.getDifficulty().toString());
-            prpstmt.setString(++n, block.getGasLimit().toString());
-            prpstmt.setString(++n, block.getGasUsed().toString());
-            prpstmt.setString(++n, block.getExtraData().substring(2));
-            prpstmt.setString(++n, block.getNonce().toString());
-            prpstmt.setString(++n, block.getSha3Uncles().substring(2));
-            prpstmt.setString(++n, block.getSize().toString());
-
-            if (!isBlockZero) {
-                prpstmt.setString(++n, block.getNumber().subtract(BigInteger.ONE).toString());  // This block's parent's number
-                prpstmt.setString(++n, block.getParentHash().substring(2)); // Expected parent block's hash
-            }
-
-            final int affectedRow = prpstmt.executeUpdate();    // INSERT returns affected row
-
-            if (affectedRow != 1) { // Affected row has to be 1, not 0 or 2 or 333
-                throw new IllegalDatabaseStateException("INSERTed a new block into the database, but the affected row count is not 1 but [" + affectedRow + "], maybe parent relations are messed up?");
-                // Inserted rows won't permanently be recorded in the database, because it will soon be rollbacked
-            }
-
-            // Get AUTO_INCLEMENT value the same time as the update execution
-            final ResultSet generatedKeys = prpstmt.getGeneratedKeys();
-            if (!generatedKeys.next()) {
-                // If AUTO_INCLEMENT was not set, it should consider to be an error
-                throw new RuntimeException();
-            }
-            final long blockInternalId = generatedKeys.getLong(1);
-            prpstmt.close();
-
-            // Second, insert uncle blocks ... usualy just A block. easy job
-
-            for (int i = 0; i < uncleBlocks.length; i++) {
-                final EthBlock.Block uncleBlock = uncleBlocks[i];
-
-                final PreparedStatement prpstmt2 = connection.prepareStatement(
-                        "INSERT INTO uncle_blocks VALUES " +
-                                "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), " +
-                                "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?)), " +  // Search for this uncle's parent block.
-                                // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
-                                "FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, UNHEX(?), ?)");
-
-
-                n = 0;
-                prpstmt2.setString(++n, uncleBlock.getNumber().toString());           // This uncle block's block number
-                prpstmt2.setLong(++n, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
-                prpstmt2.setInt(++n, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
-                prpstmt2.setString(++n, uncleBlock.getHash().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getParentHash().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getNumber().subtract(BigInteger.ONE).toString());    // Parent block's number
-                prpstmt2.setString(++n, uncleBlock.getParentHash().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getTimestamp().toString());
-                prpstmt2.setString(++n, uncleBlock.getMiner().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getDifficulty().toString());
-                prpstmt2.setString(++n, uncleBlock.getGasLimit().toString());
-                prpstmt2.setString(++n, uncleBlock.getGasUsed().toString());
-                prpstmt2.setString(++n, uncleBlock.getExtraData().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getNonce().toString());
-                prpstmt2.setString(++n, uncleBlock.getSha3Uncles().substring(2));
-                prpstmt2.setString(++n, uncleBlock.getSize().toString());
-
-                prpstmt2.executeUpdate();
-                prpstmt2.close();
-            }
-
-
-            // Third, insert transactions
-
-            for (int i = 0; i < transactions.length; i++) {
-                final Transaction transaction = transactions[i];
-                final TransactionReceipt transactionReceipt = transactionReceipts[i];
-
-                final PreparedStatement prpstmt3 = connection.prepareStatement(
-                        "INSERT INTO transactions VALUES " +
-                                "(NULL, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?))");
-                n = 0;
-                prpstmt3.setLong(++n, blockInternalId);
-                prpstmt3.setString(++n, transaction.getTransactionIndex().toString());
-                prpstmt3.setString(++n, transaction.getHash().substring(2));
-                prpstmt3.setString(++n, transaction.getFrom().substring(2));
-                prpstmt3.setString(++n, transaction.getTo() == null ? null : transaction.getTo().substring(2));
-                prpstmt3.setString(++n, transactionReceipt.getContractAddress() == null ? null : transactionReceipt.getContractAddress().substring(2));
-                prpstmt3.setBytes(++n, transaction.getValue().toByteArray());
-                prpstmt3.setString(++n, transaction.getGas().toString());
-                prpstmt3.setString(++n, transactionReceipt.getGasUsed().toString());
-                prpstmt3.setBytes(++n, transaction.getGasPrice().toByteArray());
-                prpstmt3.setString(++n, transaction.getNonce().toString());
-                prpstmt3.setString(++n, transaction.getInput().substring(2));
-
-                prpstmt3.executeUpdate();
-                prpstmt3.close();
-
-                if (!transaction.getValue().equals(BigInteger.ZERO)) {
-                    // TODO Nuko sending transaction, calculate address balance changes
-
-
-                }
-
-            }
-
-            // And finally, commit it
-            connection.commit();
-        } catch (IOException | SQLException | RuntimeException e) {
-            try {
-                connection.rollback();
-            } catch (SQLException e1) {
-                this.logger.error("An error occurred when performing a rollback on the database", e);
-            }
-
-            // Throw back to where method called
-            throw e;
         }
+
+        // Get all of transaction receipt too
+        final List<EthBlock.TransactionResult> transactionResults = block.getTransactions();
+        final Transaction[] transactions = new Transaction[transactionResults.size()];
+        final TransactionReceipt[] transactionReceipts = new TransactionReceipt[transactionResults.size()];
+
+        for (int i = 0; i < transactions.length; i++) {
+            transactions[i] = (Transaction) transactionResults.get(i).get();
+
+            final Optional<TransactionReceipt> transactionReceiptOptional = web3jManager.getWeb3j().ethGetTransactionReceipt(transactions[i].getHash()).send().getTransactionReceipt();
+
+            if (!transactionReceiptOptional.isPresent()) {
+                throw new IllegalBlockchainStateException("An transaction receipt of a transaction included in the requested block not exist on the blockchain");
+            }
+
+            transactionReceipts[i] = transactionReceiptOptional.get();
+        }
+
+
+        /* First, insert the block */
+
+        final PreparedStatement prpstmt2;
+
+
+        final boolean isBlockZero = block.getNumber().compareTo(BigInteger.ZERO) == 0;
+
+        if (isBlockZero) {    // Block #0 is going through special process
+            /* Block #0 does't have a parent block, set it NULL */
+            prpstmt2 = connection.prepareStatement(
+                    "INSERT INTO blocks VALUES " +
+                            "(NULL, ?, UNHEX(?), UNHEX(?), NULL, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
+                            "UNHEX(?), ?, 0)", RETURN_GENERATED_KEYS);
+        } else {
+            /* Otherwise, it has a parent */
+            prpstmt2 = connection.prepareStatement(
+                    "INSERT INTO blocks SELECT " +
+                            "NULL, ?, UNHEX(?), UNHEX(?), internal_id, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
+                            "UNHEX(?), ?, 0 FROM blocks WHERE number = ? AND hash = UNHEX(?)", RETURN_GENERATED_KEYS);
+            // This is special statement, INSERT ~~ SELECT ~~, NOTE: using subquery referencing the same table won't work
+        }
+
+
+        // TODO Every integer number on go-nekonium is arbitrary integer, it will overflow on mysql in future (distant future)
+        n = 0;
+        prpstmt2.setString(++n, block.getNumber().toString());
+        prpstmt2.setString(++n, block.getHash().substring(2));
+        prpstmt2.setString(++n, block.getParentHash().substring(2));
+        prpstmt2.setString(++n, block.getTimestamp().toString());
+        prpstmt2.setString(++n, block.getMiner().substring(2));
+        prpstmt2.setString(++n, block.getDifficulty().toString());
+        prpstmt2.setString(++n, block.getGasLimit().toString());
+        prpstmt2.setString(++n, block.getGasUsed().toString());
+        prpstmt2.setString(++n, block.getExtraData().substring(2));
+        prpstmt2.setString(++n, block.getNonce().toString());
+        prpstmt2.setString(++n, block.getSha3Uncles().substring(2));
+        prpstmt2.setString(++n, block.getSize().toString());
+
+        if (!isBlockZero) {
+            prpstmt2.setString(++n, block.getNumber().subtract(BigInteger.ONE).toString());  // This block's parent's number
+            prpstmt2.setString(++n, block.getParentHash().substring(2)); // Expected parent block's hash
+        }
+
+        final int affectedRow = prpstmt2.executeUpdate();    // INSERT returns affected row
+
+        if (affectedRow != 1) { // Affected row has to be 1, not 0 or 2 or 333
+            throw new IllegalDatabaseStateException("INSERTed a new block into the database, but the affected row count is not 1 but [" + affectedRow + "], maybe parent relations are messed up?");
+            // Inserted rows won't permanently be recorded in the database, because it will soon be rollbacked
+        }
+
+        // Get AUTO_INCLEMENT value the same time as the update execution
+        final ResultSet generatedKeys = prpstmt2.getGeneratedKeys();
+        if (!generatedKeys.next()) {
+            // If AUTO_INCLEMENT was not set, it should consider to be an error
+            throw new RuntimeException();
+        }
+        final long blockInternalId = generatedKeys.getLong(1);
+        prpstmt2.close();
+
+        // Second, insert uncle blocks ... usualy just A block. easy job
+
+        for (int i = 0; i < uncleBlocks.length; i++) {
+            final EthBlock.Block uncleBlock = uncleBlocks[i];
+
+            final PreparedStatement prpstmt3 = connection.prepareStatement(
+                    "INSERT INTO uncle_blocks VALUES " +
+                            "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), " +
+                            "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?)), " +  // Search for this uncle's parent block.
+                            // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
+                            "FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, UNHEX(?), ?)");
+
+
+            n = 0;
+            prpstmt3.setString(++n, uncleBlock.getNumber().toString());           // This uncle block's block number
+            prpstmt3.setLong(++n, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
+            prpstmt3.setInt(++n, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
+            prpstmt3.setString(++n, uncleBlock.getHash().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getParentHash().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getNumber().subtract(BigInteger.ONE).toString());    // Parent block's number
+            prpstmt3.setString(++n, uncleBlock.getParentHash().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getTimestamp().toString());
+            prpstmt3.setString(++n, uncleBlock.getMiner().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getDifficulty().toString());
+            prpstmt3.setString(++n, uncleBlock.getGasLimit().toString());
+            prpstmt3.setString(++n, uncleBlock.getGasUsed().toString());
+            prpstmt3.setString(++n, uncleBlock.getExtraData().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getNonce().toString());
+            prpstmt3.setString(++n, uncleBlock.getSha3Uncles().substring(2));
+            prpstmt3.setString(++n, uncleBlock.getSize().toString());
+
+            prpstmt3.executeUpdate();
+            prpstmt3.close();
+        }
+
+
+        // Third, insert transactions
+
+        for (int i = 0; i < transactions.length; i++) {
+            final Transaction transaction = transactions[i];
+            final TransactionReceipt transactionReceipt = transactionReceipts[i];
+
+            final PreparedStatement prpstmt4 = connection.prepareStatement(
+                    "INSERT INTO transactions VALUES " +
+                            "(NULL, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?))");
+            n = 0;
+            prpstmt4.setLong(++n, blockInternalId);
+            prpstmt4.setString(++n, transaction.getTransactionIndex().toString());
+            prpstmt4.setString(++n, transaction.getHash().substring(2));
+            prpstmt4.setString(++n, transaction.getFrom().substring(2));
+            prpstmt4.setString(++n, transaction.getTo() == null ? null : transaction.getTo().substring(2));
+            prpstmt4.setString(++n, transactionReceipt.getContractAddress() == null ? null : transactionReceipt.getContractAddress().substring(2));
+            prpstmt4.setBytes(++n, transaction.getValue().toByteArray());
+            prpstmt4.setString(++n, transaction.getGas().toString());
+            prpstmt4.setString(++n, transactionReceipt.getGasUsed().toString());
+            prpstmt4.setBytes(++n, transaction.getGasPrice().toByteArray());
+            prpstmt4.setString(++n, transaction.getNonce().toString());
+            prpstmt4.setString(++n, transaction.getInput().substring(2));
+
+            prpstmt4.executeUpdate();
+            prpstmt4.close();
+
+            if (!transaction.getValue().equals(BigInteger.ZERO)) {
+                // TODO Nuko sending transaction, calculate address balance changes
+
+
+            }
+
+        }
+
+        // Not committing
     }
 
-    private void validChainCheck(Connection connection, BigInteger blockNumber) {
+    public void checkParentsAndMarkForked(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException {
+        BigInteger parentBlockNumber = validBlockNumber.subtract(BigInteger.ONE);   // This shows current block number of the parent block
+        String expectedParentBlockHash = validParentHash;   // This shows current EXPECTED block hash of the VALID parent block, expected means maybe not recorded in the database
 
+        int affectedRow;
+
+        do {
+            logger.info("Checking block relation at {}", parentBlockNumber);
+
+            /* Get parent's block entry from the database */
+            final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id, NEKH(parent_hash) FROM blocks WHERE number = ? AND hash = UNHEX(?)");
+            prpstmt.setString(1, parentBlockNumber.toString());
+            prpstmt.setString(2, expectedParentBlockHash.substring(2));
+
+            final ResultSet resultSet = prpstmt.executeQuery();
+
+            if (resultSet.last()) { // Move to last row
+                if (resultSet.getRow() == 1) {  // If last row index was 1 then there is only one entry, thus it's a valid parent
+                    /* Mark "uncles" (NOT uncles included in blocks) as forked block */
+
+                    final String internalId = resultSet.getString(1);
+                    String nextValidParentHash = resultSet.getString(2);
+
+                    prpstmt.close();    // Don't forget to close the statement
+
+                    // This statement marks "forked" all non main-chain blocks
+                    final PreparedStatement prpstmt2 = connection.prepareStatement("UPDATE blocks SET forked = 1 WHERE number = ? AND internal_id != ? AND forked = 0");
+                    prpstmt2.setString(1, parentBlockNumber.toString());
+                    prpstmt2.setString(2, internalId);
+
+                    affectedRow = prpstmt2.executeUpdate(); // Execute update statement but no committing
+
+                    parentBlockNumber = parentBlockNumber.subtract(BigInteger.ONE); // Next parent block number will be this block's parent block number
+                    expectedParentBlockHash = nextValidParentHash;   // Set next parent block hash
+
+                    prpstmt2.close();
+                } else {    // There are more than 2 blocks considered as valid parent (block hash is the same)
+                    prpstmt.close();
+                    throw new IllegalDatabaseStateException("Parent block with the same hash exist many [" + expectedParentBlockHash + "]");
+                }
+            } else {    // Parent block doesn't recorded in the database, maybe converter missed it
+                prpstmt.close();
+                throw new IllegalDatabaseStateException("Unknown parent block hash, not recorded in the database [" + expectedParentBlockHash + "]");
+            }
+        } while (affectedRow == 0); // Continue to go back and check and mark until there are no identical blocks with the same block number
     }
 
     private class NormalSubscriber implements Action1<EthBlock> {
 
         @Override
         public void call(EthBlock ethBlock) {
-            logger.debug("NEW BLOCK {}", ethBlock.getBlock().getNumber().toString());
+            logger.info("NEW BLOCK {}", ethBlock.getBlock().getNumber().toString());
 
             Connection connection = null;
 
             try {
                 connection = databaseManager.getConnection();
-                commitBlock(connection, ethBlock.getBlock());
-            } catch (SQLException | IOException e) {
+
+                final BigInteger blockNumber = ethBlock.getBlock().getNumber();
+                final String parentHash = ethBlock.getBlock().getParentHash();
+
+                checkParentsAndMarkForked(connection, blockNumber, parentHash); // Check parents relation and mark forked blocks
+                insertBlock(connection, ethBlock.getBlock());
+
+                // Don't forget to commit it
+                connection.commit();
+            } catch (SQLException | IOException | IllegalDatabaseStateException | IllegalBlockchainStateException e) {
+                if (connection != null) {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException e1) {
+                        logger.error("An error occurred when performing a rollback on the database", e);
+                    }
+                }
+
                 logger.error("An error occurred during committing a new block", e);
             } finally {
                 if (connection != null) {
@@ -412,7 +511,10 @@ public class BlockchainConverter implements Runnable {
                 final EthBlock.Block block = ethBlock.getBlock();
                 final BigInteger blockNumber = block.getNumber();
 
-                commitBlock(connection, block);
+                // Parent relation check has to be performed before and out of catchup fetch
+                insertBlock(connection, block);
+                connection.commit();    // Commit change
+
                 // Incrementing and set new value for blockCount, be careful that BigInteger is IMMUTABLE.
                 this.blockCount = blockCount.add(BigInteger.ONE);
 
@@ -430,6 +532,13 @@ public class BlockchainConverter implements Runnable {
                             progressp.toString());
                 }
             } catch (Exception e) {
+                if (connection != null) {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException e1) {
+                        logger.error("An error occurred when performing a rollback on the database", e);
+                    }
+                }
                 logger.error("Database issue! Stopping catchup fetch", e);
 
                 stop = true;

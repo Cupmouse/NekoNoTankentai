@@ -63,6 +63,8 @@ public class Reorganizer {
                 final ResultSet resultSet2 = prpstmt2.executeQuery();
 
                 while (resultSet2.next()) {
+                    connection.prepareStatement()
+
                     System.out.println(resultSet2.getString(1) + " IS forked block");
                 }
 
