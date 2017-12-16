@@ -17,6 +17,7 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.sql.*;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -134,7 +135,7 @@ public class BlockchainConverter implements Runnable {
 //                // TODO fetch valid blocks and mark other already in the database as invalid
 //
 //                try {
-//                    checkParentsAndMarkForked(connection, catchupStart, block.getParentHash());
+//                    traceParentRelation(connection, catchupStart, block.getParentHash());
 //                    connection.commit();
 //                } catch (SQLException e) {
 //                    try {
@@ -198,32 +199,10 @@ public class BlockchainConverter implements Runnable {
         }
     }
 
-    private void insertBlockAndParents(Connection connection, EthBlock.Block block) throws SQLException, IOException, IllegalBlockchainStateException, IllegalDatabaseStateException {
-
-        /* Check if there is the parent block record on the database */
-        final PreparedStatement prpstmt = connection.prepareStatement("SELECT 1 FROM blocks WHERE number = ? AND hash = UNHEX(?)");
-        prpstmt.setString(1, block.getNumber().subtract(BigInteger.ONE).toString());
-        prpstmt.setString(2, block.getParentHash());
-
-        final ResultSet resultSet = prpstmt.executeQuery();
-
-        if (!resultSet.next()) {
-            /* Parent record has not fetched */
-
-            prpstmt.close();
-
-            final EthBlock.Block parentBlock = web3jManager.getWeb3j().ethGetBlockByNumber(DefaultBlockParameter.valueOf(block.getNumber().subtract(BigInteger.ONE)), true).send().getBlock();
-
-            insertBlockAndParents(connection, parentBlock);
-        } else {
-            prpstmt.close();
-        }
-
-        insertBlock(connection, block);
-    }
-
     /**
-     * Commit all of the data involving {@code block}, including uncleBlocks, which sends sync request for nekonium node
+     * Insert the data involving {@code block}, including uncleBlocks, which sends sync request for nekonium node
+     * No commit
+     * No parent relation check
      *
      * @param connection
      * @param block
@@ -398,9 +377,14 @@ public class BlockchainConverter implements Runnable {
         // Not committing
     }
 
-    public void checkParentsAndMarkForked(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException {
+    public void traceParentRelation(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException, IOException {
         BigInteger parentBlockNumber = validBlockNumber.subtract(BigInteger.ONE);   // This shows current block number of the parent block
         String expectedParentBlockHash = validParentHash;   // This shows current EXPECTED block hash of the VALID parent block, expected means maybe not recorded in the database
+
+        LinkedList<EthBlock.Block> parentsMissing = new LinkedList<>();    // Parent block have to be added in the order of the block number, otherwise an error occurs during inserting
+
+
+
 
         int affectedRow;
 
@@ -414,12 +398,38 @@ public class BlockchainConverter implements Runnable {
 
             final ResultSet resultSet = prpstmt.executeQuery();
 
-            if (resultSet.last()) { // Move to last row
-                if (resultSet.getRow() == 1) {  // If last row index was 1 then there is only one entry, thus it's a valid parent
+            resultSet.last();   // Moving to the last row
+
+            if (resultSet.getRow() <= 1) {  // If last row index was 1 then there is only one entry, thus it's a valid parent, if 0 then we have to insert valid parent block
+                prpstmt.close();
+
+                if (resultSet.getRow() == 0) {
+                    // Parent block is not recorded in the database, maybe converter missed it
+                    /* Fetching main chain parent block*/
+
+                    final EthBlock.Block parentOnMainChain = web3jManager.getWeb3j().ethGetBlockByNumber(DefaultBlockParameter.valueOf(parentBlockNumber), true).send().getBlock();
+
+                    parentsMissing.addFirst(parentOnMainChain);    // Missing parents will be added after the fork block check
+
                     /* Mark "uncles" (NOT uncles included in blocks) as forked block */
 
+                    final PreparedStatement prpstmt2 = connection.prepareStatement("UPDATE blocks SET forked = 1 WHERE number = ? AND forked = 0");// This will mark ALL of the blocks with the number of parentBlockNumber as forked blocks, on-chain parent block will be inserted later
+                    prpstmt2.setString(1, parentBlockNumber.toString());
+
+                    affectedRow = prpstmt2.executeUpdate();
+
+                    prpstmt2.close();
+
+                    parentBlockNumber = parentOnMainChain.getNumber().subtract(BigInteger.ONE);
+                    expectedParentBlockHash = parentOnMainChain.getParentHash();
+
+                    assert affectedRow > 0;    // Affected row should be always > 0 because if the parent is missing, that means it was forked, thus there should be more than one blocks having the same block number
+                } else {
+                    // Parent block is recorded in the database
+                    /* Mark others (not valid ones) as forked block */
+
                     final String internalId = resultSet.getString(1);
-                    String nextValidParentHash = resultSet.getString(2);
+                    final String nextValidParentHash = resultSet.getString(2);
 
                     prpstmt.close();    // Don't forget to close the statement
 
@@ -434,15 +444,22 @@ public class BlockchainConverter implements Runnable {
                     expectedParentBlockHash = nextValidParentHash;   // Set next parent block hash
 
                     prpstmt2.close();
-                } else {    // There are more than 2 blocks considered as valid parent (block hash is the same)
-                    prpstmt.close();
-                    throw new IllegalDatabaseStateException("Parent block with the same hash exist many [" + expectedParentBlockHash + "]");
                 }
-            } else {    // Parent block doesn't recorded in the database, maybe converter missed it
+
+            } else {    // There are more than 2 blocks considered as valid parent (block hash is the same)
                 prpstmt.close();
-                throw new IllegalDatabaseStateException("Unknown parent block hash, not recorded in the database [" + expectedParentBlockHash + "]");
+                throw new IllegalDatabaseStateException("Parent block with the same hash exist many [" + expectedParentBlockHash + "]");
             }
-        } while (affectedRow == 0); // Continue to go back and check and mark until there are no identical blocks with the same block number
+
+        } while (affectedRow != 0 && parentBlockNumber.compareTo(BigInteger.ZERO) >= 0); // Continue to go back and check and mark until there are no identical blocks with the same block number
+
+        /* Insert missing parents */
+
+        for (EthBlock.Block block : parentsMissing) {
+            insertBlock(connection, block);
+        }
+
+        // Note! No committing!
     }
 
     private class NormalSubscriber implements Action1<EthBlock> {
@@ -459,7 +476,7 @@ public class BlockchainConverter implements Runnable {
                 final BigInteger blockNumber = ethBlock.getBlock().getNumber();
                 final String parentHash = ethBlock.getBlock().getParentHash();
 
-                checkParentsAndMarkForked(connection, blockNumber, parentHash); // Check parents relation and mark forked blocks
+                traceParentRelation(connection, blockNumber, parentHash); // Insert missing parents and mark forked blocks
                 insertBlock(connection, ethBlock.getBlock());
 
                 // Don't forget to commit it
@@ -488,6 +505,7 @@ public class BlockchainConverter implements Runnable {
     }
 
     private class CatchupSubscriber implements Action1<EthBlock> {
+        // FIXME assuming all of the blocks are VALID from the start because it is old and CONFIRMED by a lot of successor blocks
 
         private final BigInteger BI_100 = BigInteger.valueOf(100);
 
@@ -511,7 +529,10 @@ public class BlockchainConverter implements Runnable {
                 final EthBlock.Block block = ethBlock.getBlock();
                 final BigInteger blockNumber = block.getNumber();
 
-                // Parent relation check has to be performed before and out of catchup fetch
+                if (blockCount.compareTo(BigInteger.ZERO) == 0) {   // When it is the start point of catchup fetch, check for parent relations and correct them
+                    traceParentRelation(connection, blockNumber, block.getParentHash());
+                }
+
                 insertBlock(connection, block);
                 connection.commit();    // Commit change
 
