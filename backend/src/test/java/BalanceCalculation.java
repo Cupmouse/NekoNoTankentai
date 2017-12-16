@@ -11,25 +11,52 @@ public class BalanceCalculation {
 
     public static final BigInteger BLOCK_REWARD = BigInteger.valueOf(7500000000000000000L);
 
-        public static void main(String[] args) {
+    public static void main(String[] args) {
+        final String addr = "2b14a494921680b54fd234d4d20a430d6a03b5c1";
         final DatabaseManager databaseManager = new DatabaseManager();
 
         Connection connection = null;
 
         try {
-            databaseManager.init();
+            databaseManager.init("jdbc:mysql://localhost:3306/nek_blockchain", "explorer", "hA3EHoqarOlu25bE5iY6h41eFEfOz1");
 
             connection = databaseManager.getConnection();
 
+            // Receiving
+            final PreparedStatement prpstmtr = connection.prepareStatement("SELECT `value` FROM transactions WHERE `to` = UNHEX(?) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
+            prpstmtr.setString(1, addr);
+            final ResultSet resultSetR = prpstmtr.executeQuery();
 
-            // Transaction fee
+            BigInteger rsum = BigInteger.ZERO;
+
+            while (resultSetR.next()) {
+                /* Subtracting sending fee */
+                rsum = rsum.add(new BigInteger(resultSetR.getBytes(1)));
+            }
+
+            prpstmtr.close();
+
+            // Sending
+            final PreparedStatement prpstmts = connection.prepareStatement("SELECT `value`, gas_used, gas_price FROM transactions WHERE `from` = UNHEX(?) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
+            prpstmts.setString(1, addr);
+            final ResultSet resultSetS = prpstmts.executeQuery();
+
+            BigInteger ssum = BigInteger.ZERO;
+            while (resultSetS.next()) {
+                final BigInteger executionFee = new BigInteger(resultSetS.getString(2)).multiply(new BigInteger(resultSetS.getBytes(3)));
+
+                ssum = ssum.subtract(new BigInteger(resultSetS.getBytes(1))).subtract(executionFee);
+            }
+
+            prpstmts.close();
+
+            // Transaction fee return
             BigInteger tsum = BigInteger.ZERO;
 
-            final PreparedStatement prpstmtt = connection.prepareStatement("SELECT transactions.gas_used, transactions.gas_price FROM transactions WHERE EXISTS (SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND blocks.miner = UNHEX(?))");
-            prpstmtt.setString(1, "88eB4d4D9E75A9F0316fD0F2eEbaA17FC7E1e3B8");
+            final PreparedStatement prpstmtt = connection.prepareStatement("SELECT transactions.gas_used, transactions.gas_price FROM transactions WHERE EXISTS (SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND blocks.miner = UNHEX(?) AND forked = 0)");
+            prpstmtt.setString(1, addr);
 
             final ResultSet resultSetT = prpstmtt.executeQuery();
-
 
             while (resultSetT.next()) {
                 final BigInteger gas = BigInteger.valueOf(resultSetT.getLong(1));
@@ -42,8 +69,8 @@ public class BalanceCalculation {
 
             // Normal block reward
 
-            final PreparedStatement prpstmtb = connection.prepareStatement("SELECT 1 FROM blocks WHERE blocks.miner = UNHEX(?)");
-            prpstmtb.setString(1, "88eB4d4D9E75A9F0316fD0F2eEbaA17FC7E1e3B8");
+            final PreparedStatement prpstmtb = connection.prepareStatement("SELECT 1 FROM blocks WHERE blocks.miner = UNHEX(?) AND forked = 0");
+            prpstmtb.setString(1, addr);
             final ResultSet resultSetB = prpstmtb.executeQuery();
 
             resultSetB.last();
@@ -54,35 +81,46 @@ public class BalanceCalculation {
             prpstmtb.close();
 
             // Uncle block reward
-            final PreparedStatement prpstmtu = connection.prepareStatement("select SUM(uncle_blocks.number + 8 - (SELECT blocks.number FROM blocks WHERE blocks.internal_id = uncle_blocks.block_id)) from uncle_blocks where miner = UNHEX(?)");
-            prpstmtu.setString(1, "88eB4d4D9E75A9F0316fD0F2eEbaA17FC7E1e3B8");
+            final PreparedStatement prpstmtu = connection.prepareStatement("SELECT SUM(uncle_blocks.number + 8 - blocks.number) FROM uncle_blocks INNER JOIN blocks ON uncle_blocks.block_id = blocks.internal_id WHERE uncle_blocks.miner = UNHEX(?) AND blocks.forked = 0");
+            prpstmtu.setString(1, addr);
             final ResultSet resultSetU = prpstmtu.executeQuery();
 
-            resultSetU.next();
+            final BigInteger usum;
 
-            final BigInteger usum = new BigInteger(resultSetU.getString(1)).multiply(BLOCK_REWARD).divide(BigInteger.valueOf(8));
+            if (resultSetU.next() && resultSetU.getString(1) != null) {
+                usum = new BigInteger(resultSetU.getString(1)).multiply(BLOCK_REWARD).divide(BigInteger.valueOf(8));
+            } else {
+                usum = BigInteger.ZERO;
+            }
 
             prpstmtu.close();
 
             // Uncle including reward
             final PreparedStatement prpstmtm = connection.prepareStatement("SELECT SUM(" +
                     "(SELECT SUM(" +
-                    "uncle_blocks.number + 8 - blocks.number" +
+                    "1" +
                     ") FROM uncle_blocks WHERE uncle_blocks.block_id = blocks.internal_id LIMIT 2)" +
-                    ") FROM blocks WHERE blocks.miner = UNHEX(?)");
-            prpstmtm.setString(1, "88eB4d4D9E75A9F0316fD0F2eEbaA17FC7E1e3B8");
+                    ") FROM blocks WHERE blocks.miner = UNHEX(?) AND blocks.forked = 0");
+            prpstmtm.setString(1, addr);
 
             final ResultSet resultSetM = prpstmtm.executeQuery();
-            resultSetM.next();
 
-            final BigInteger msum = new BigInteger(resultSetM.getString(1)).multiply(BLOCK_REWARD).divide(BigInteger.valueOf(8 * 32));
+            final BigInteger msum;
+            if (resultSetM.next() && resultSetM.getString(1) != null) {
+                msum = new BigInteger(resultSetM.getString(1)).multiply(BLOCK_REWARD).divide(BigInteger.valueOf(32));
+            } else {
+                msum = BigInteger.ZERO;
+            }
+
 
             prpstmtm.close();
 
             // Display
 
-            final BigInteger sum = tsum.add(bsum).add(usum).add(msum);
+            final BigInteger sum = rsum.add(ssum).add(tsum).add(bsum).add(usum).add(msum);
 
+            System.out.println(String.format("r: %s", new BigDecimal(rsum).movePointLeft(18).toString()));
+            System.out.println(String.format("s: %s", new BigDecimal(ssum).movePointLeft(18).toString()));
             System.out.println(String.format("t: %s", new BigDecimal(tsum).movePointLeft(18).toString()));
             System.out.println(String.format("b: %s", new BigDecimal(bsum).movePointLeft(18).toString()));
             System.out.println(String.format("u: %s", new BigDecimal(usum).movePointLeft(18).toString()));

@@ -17,10 +17,7 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.sql.*;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static java.sql.Statement.RETURN_GENERATED_KEYS;
 
@@ -32,6 +29,7 @@ public class BlockchainConverter implements Runnable {
 
     private final Web3jManager web3jManager;
     private final DatabaseManager databaseManager;
+    private final AddressIdPoolManager addressIdPool;
     private final Logger logger;
 
     private Subscription blockSub;
@@ -40,6 +38,7 @@ public class BlockchainConverter implements Runnable {
     public BlockchainConverter(Web3jManager web3jManager, DatabaseManager databaseManager) {
         this.web3jManager = web3jManager;
         this.databaseManager = databaseManager;
+        this.addressIdPool = new AddressIdPoolManager();
         this.logger = LoggerFactory.getLogger("Converter");
     }
 
@@ -199,6 +198,94 @@ public class BlockchainConverter implements Runnable {
         }
     }
 
+    private void addBigIntegerOnMap(Map<BigInteger, BigInteger> map, BigInteger addr, BigInteger bigInteger) {
+        if (map.containsKey(addr)) {
+            map.put(addr, map.get(addr).add(bigInteger));
+        } else {
+            map.put(addr, bigInteger);
+        }
+    }
+
+    /**
+     * All address involving the block must have been on the database, before calling this function
+     *
+     * @param connection
+     * @param block
+     * @param uncles
+     * @param transactionReceiptList
+     * @throws SQLException
+     */
+    private void recordBalanceChange(Connection connection, EthBlock.Block block, BigInteger blockInternalId, List<EthBlock.Block> uncles, List<TransactionReceipt> transactionReceiptList) throws SQLException {
+        final BigInteger minerAddressId = addressIdPool.getOrInsertAddressId(connection, block.getMiner(), AddressType.NORMAL);
+
+
+        final HashMap<BigInteger, BigInteger> addresses = new HashMap<>();
+
+        final BigInteger blockReward = BigInteger.valueOf(7500000000000000000L);    // Nekonium block reward
+
+        /* Pure block mining reward */
+        addBigIntegerOnMap(addresses, minerAddressId, blockReward);   // Miner of the block gets full block reward
+
+
+        /* Uncle mining / inclusion reward */
+        final BigInteger eight = BigInteger.valueOf(8);
+
+        for (EthBlock.Block uncle : uncles) {
+            final BigInteger uncleMinerAddressId = addressIdPool.getOrInsertAddressId(connection, uncle.getMiner(), AddressType.NORMAL);
+
+            final BigInteger uncleReward = uncle.getNumber().add(eight).subtract(block.getNumber()).multiply(blockReward).divide(eight);    // This is full uncle reward
+
+            addBigIntegerOnMap(addresses, uncleMinerAddressId, uncleReward);   // Miner of a uncle block gets full uncle reward
+            addBigIntegerOnMap(addresses, minerAddressId, blockReward.divide(BigInteger.valueOf(32)));    // Miner of the block gets full block reward / 32
+        }
+
+        /* Transaction balance change / fee */
+        for (int i = 0; i < block.getTransactions().size(); i++) {
+            final Transaction transaction = (Transaction) block.getTransactions().get(i).get();
+            final TransactionReceipt transactionReceipt = transactionReceiptList.get(i);
+
+            final BigInteger fromAddressId = addressIdPool.getAddressId(connection, transaction.getFrom());
+
+            final BigInteger transactionFee = transactionReceipt.getGasUsed().multiply(transaction.getGasPrice());  // Transaction fee is gasUsed * gasPrice
+            final BigInteger actualValueSent = transaction.getValue().subtract(transactionFee); // Actual value sent (fee considered)
+
+            addBigIntegerOnMap(addresses, fromAddressId, transaction.getValue());   // Subtract from sender, INCLUDING fee
+
+            if (transaction.getTo() != null) {
+                addBigIntegerOnMap(addresses, addressIdPool.getOrInsertAddressId(connection, transaction.getTo(), AddressType.NORMAL), actualValueSent);    // Add to target
+
+            } else if (transactionReceipt.getContractAddress() != null) {
+                addBigIntegerOnMap(addresses, addressIdPool.getOrInsertAddressId(connection, transactionReceipt.getContractAddress(), AddressType.CONTRACT), actualValueSent); // Add to contract
+
+            } else {
+                throw new IllegalBlockchainStateException("Something went wrong. The transaction is not contract creation nor normal sending");
+            }
+
+            addBigIntegerOnMap(addresses, minerAddressId, transactionFee);    // Give transaction fee to the miner
+        }
+
+
+        /* Insert every balance change */
+        for (Map.Entry<BigInteger, BigInteger> entry : addresses.entrySet()) {
+            final BigInteger addressId = entry.getKey();
+            final BigInteger balanceChange = entry.getValue();
+
+            if (balanceChange.compareTo(BigInteger.ZERO) == 0) {
+                continue;   // Balance not changed, skip this   TODO is this ok?
+            }
+
+
+            final PreparedStatement prpstmt = connection.prepareStatement("INSERT INTO balance_changes VALUES (?, ?, ?, ?)");
+            prpstmt.setString(1, blockInternalId.toString());
+            prpstmt.setString(2, addressId.toString());
+            prpstmt.setInt(3, balanceChange.signum() == -1 ? 1 : 0);    // If balance change is negative then 1 otherwise 0
+            prpstmt.setString(4, balanceChange.abs().toString());
+            prpstmt.executeUpdate();
+
+            prpstmt.close();
+        }
+    }
+
     /**
      * Insert the data involving {@code block}, including uncleBlocks, which sends sync request for nekonium node
      * No commit
@@ -244,6 +331,8 @@ public class BlockchainConverter implements Runnable {
             transactionReceipts[i] = transactionReceiptOptional.get();
         }
 
+        /* Before inserting, get miners address id */
+        final BigInteger minerAddressId = addressIdPool.getOrInsertAddressId(connection, block.getMiner(), AddressType.NORMAL); // If the miner is not recorded on the database, will be inserted as normal address
 
         /* First, insert the block */
 
@@ -256,14 +345,14 @@ public class BlockchainConverter implements Runnable {
             /* Block #0 does't have a parent block, set it NULL */
             prpstmt2 = connection.prepareStatement(
                     "INSERT INTO blocks VALUES " +
-                            "(NULL, ?, UNHEX(?), UNHEX(?), NULL, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
-                            "UNHEX(?), ?, 0)", RETURN_GENERATED_KEYS);
+                            "(NULL, ?, UNHEX(?), NULL, FROM_UNIXTIME(?), ?, ?, ?, ?, UNHEX(?), ?, " +
+                            "?, 0)", RETURN_GENERATED_KEYS);
         } else {
             /* Otherwise, it has a parent */
             prpstmt2 = connection.prepareStatement(
                     "INSERT INTO blocks SELECT " +
-                            "NULL, ?, UNHEX(?), UNHEX(?), internal_id, FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, " +
-                            "UNHEX(?), ?, 0 FROM blocks WHERE number = ? AND hash = UNHEX(?)", RETURN_GENERATED_KEYS);
+                            "NULL, ?, UNHEX(?), internal_id, FROM_UNIXTIME(?), ?, ?, ?, ?, UNHEX(?), ?, " +
+                            "?, 0 FROM blocks WHERE number = ? AND hash = UNHEX(?)", RETURN_GENERATED_KEYS);
             // This is special statement, INSERT ~~ SELECT ~~, NOTE: using subquery referencing the same table won't work
         }
 
@@ -272,15 +361,13 @@ public class BlockchainConverter implements Runnable {
         n = 0;
         prpstmt2.setString(++n, block.getNumber().toString());
         prpstmt2.setString(++n, block.getHash().substring(2));
-        prpstmt2.setString(++n, block.getParentHash().substring(2));
         prpstmt2.setString(++n, block.getTimestamp().toString());
-        prpstmt2.setString(++n, block.getMiner().substring(2));
+        prpstmt2.setString(++n, minerAddressId.toString());
         prpstmt2.setString(++n, block.getDifficulty().toString());
         prpstmt2.setString(++n, block.getGasLimit().toString());
         prpstmt2.setString(++n, block.getGasUsed().toString());
         prpstmt2.setString(++n, block.getExtraData().substring(2));
         prpstmt2.setString(++n, block.getNonce().toString());
-        prpstmt2.setString(++n, block.getSha3Uncles().substring(2));
         prpstmt2.setString(++n, block.getSize().toString());
 
         if (!isBlockZero) {
@@ -309,12 +396,14 @@ public class BlockchainConverter implements Runnable {
         for (int i = 0; i < uncleBlocks.length; i++) {
             final EthBlock.Block uncleBlock = uncleBlocks[i];
 
+            final BigInteger uncleMinerAddressId = addressIdPool.getOrInsertAddressId(connection, uncleBlock.getMiner(), AddressType.NORMAL); // Get or insert address
+
             final PreparedStatement prpstmt3 = connection.prepareStatement(
                     "INSERT INTO uncle_blocks VALUES " +
-                            "(NULL, ?, ?, ?, UNHEX(?), UNHEX(?), " +
-                            "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?)), " +  // Search for this uncle's parent block.
+                            "(NULL, ?, ?, ?, UNHEX(?), " +
+                            "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?) AND forked = 0), " +  // Search for this uncle's parent block.
                             // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
-                            "FROM_UNIXTIME(?), UNHEX(?), ?, ?, ?, UNHEX(?), ?, UNHEX(?), ?)");
+                            "FROM_UNIXTIME(?), ?, ?, ?, ?, UNHEX(?), ?, ?)");
 
 
             n = 0;
@@ -322,17 +411,14 @@ public class BlockchainConverter implements Runnable {
             prpstmt3.setLong(++n, blockInternalId);                               // Block internal id (NOT always same as block number) that this uncle block is included
             prpstmt3.setInt(++n, i);                                              // i is uncle index. gnekonium allows only 2 uncle blocks in a single block
             prpstmt3.setString(++n, uncleBlock.getHash().substring(2));
-            prpstmt3.setString(++n, uncleBlock.getParentHash().substring(2));
             prpstmt3.setString(++n, uncleBlock.getNumber().subtract(BigInteger.ONE).toString());    // Parent block's number
-            prpstmt3.setString(++n, uncleBlock.getParentHash().substring(2));
             prpstmt3.setString(++n, uncleBlock.getTimestamp().toString());
-            prpstmt3.setString(++n, uncleBlock.getMiner().substring(2));
+            prpstmt3.setString(++n, uncleMinerAddressId.toString());
             prpstmt3.setString(++n, uncleBlock.getDifficulty().toString());
             prpstmt3.setString(++n, uncleBlock.getGasLimit().toString());
             prpstmt3.setString(++n, uncleBlock.getGasUsed().toString());
             prpstmt3.setString(++n, uncleBlock.getExtraData().substring(2));
             prpstmt3.setString(++n, uncleBlock.getNonce().toString());
-            prpstmt3.setString(++n, uncleBlock.getSha3Uncles().substring(2));
             prpstmt3.setString(++n, uncleBlock.getSize().toString());
 
             prpstmt3.executeUpdate();
@@ -346,16 +432,31 @@ public class BlockchainConverter implements Runnable {
             final Transaction transaction = transactions[i];
             final TransactionReceipt transactionReceipt = transactionReceipts[i];
 
+            final BigInteger toAddressId;
+            if (transaction.getTo() == null)    // Get the to address id, if not exists then create it
+                toAddressId = null;
+            else
+                toAddressId = addressIdPool.getOrInsertAddressId(connection, transaction.getTo());
+
+
+            final BigInteger contractAddressId;
+            if (transactionReceipt.getContractAddress() == null) {  // Same thing goes here, except as contract address
+                contractAddressId = null;
+            } else {
+                contractAddressId = addressIdPool.getOrInsertAddressId(connection, transactionReceipt.getContractAddress(), AddressType.CONTRACT);
+            }
+
             final PreparedStatement prpstmt4 = connection.prepareStatement(
                     "INSERT INTO transactions VALUES " +
-                            "(NULL, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?))");
+                            "(NULL, ?, ?, UNHEX(?), (SELECT internal_id FROM address WHERE address = UNHEX(?)), " + // The from address should exists before this transaction
+                            "UNHEX(?), UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?))");
             n = 0;
             prpstmt4.setLong(++n, blockInternalId);
             prpstmt4.setString(++n, transaction.getTransactionIndex().toString());
             prpstmt4.setString(++n, transaction.getHash().substring(2));
             prpstmt4.setString(++n, transaction.getFrom().substring(2));
-            prpstmt4.setString(++n, transaction.getTo() == null ? null : transaction.getTo().substring(2));
-            prpstmt4.setString(++n, transactionReceipt.getContractAddress() == null ? null : transactionReceipt.getContractAddress().substring(2));
+            prpstmt4.setString(++n, toAddressId == null ? null : toAddressId.toString());
+            prpstmt4.setString(++n, contractAddressId == null ? null : contractAddressId.toString());
             prpstmt4.setBytes(++n, transaction.getValue().toByteArray());
             prpstmt4.setString(++n, transaction.getGas().toString());
             prpstmt4.setString(++n, transactionReceipt.getGasUsed().toString());
@@ -365,19 +466,12 @@ public class BlockchainConverter implements Runnable {
 
             prpstmt4.executeUpdate();
             prpstmt4.close();
-
-            if (!transaction.getValue().equals(BigInteger.ZERO)) {
-                // TODO Nuko sending transaction, calculate address balance changes
-
-
-            }
-
         }
 
         // Not committing
     }
 
-    public void traceParentRelation(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException, IOException {
+    private void traceParentRelation(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException, IOException {
         BigInteger parentBlockNumber = validBlockNumber.subtract(BigInteger.ONE);   // This shows current block number of the parent block
         String expectedParentBlockHash = validParentHash;   // This shows current EXPECTED block hash of the VALID parent block, expected means maybe not recorded in the database
 
@@ -392,7 +486,7 @@ public class BlockchainConverter implements Runnable {
             logger.info("Checking block relation at {}", parentBlockNumber);
 
             /* Get parent's block entry from the database */
-            final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id, NEKH(parent_hash) FROM blocks WHERE number = ? AND hash = UNHEX(?)");
+            final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id, NEKH((SELECT hash FROM blocks WHERE internal_id = blocks.parent)) FROM blocks WHERE number = ? AND hash = UNHEX(?)");
             prpstmt.setString(1, parentBlockNumber.toString());
             prpstmt.setString(2, expectedParentBlockHash.substring(2));
 
