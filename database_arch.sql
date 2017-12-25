@@ -12,8 +12,8 @@ NO SQL
   SQL SECURITY INVOKER
   COMMENT 'Inputs data, returns nekonium format hex string'
   BEGIN
-    RETURN CONCAT('0x', LOWER(HEX(param))):
-  END;
+    RETURN CONCAT('0x', LOWER(HEX(param)));
+  END:
 
 DELIMITER ;
 
@@ -30,6 +30,7 @@ CREATE TABLE `address` (
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB
 ;
+
 
 
 
@@ -83,11 +84,10 @@ CREATE TABLE `uncle_blocks` (
   PRIMARY KEY (`internal_id`),
   INDEX `hash` (`hash`),
   INDEX `number` (`number`),
-  INDEX `index` (`index`),
-  INDEX `FK_uncle_blocks_blocks` (`block_id`),
-  INDEX `FK_uncle_blocks_blocks_2` (`parent`),
-  INDEX `FK_uncle_blocks_address` (`miner_id`),
-  CONSTRAINT `FK_uncle_blocks_address` FOREIGN KEY (`miner_id`) REFERENCES `address` (`internal_id`),
+  INDEX `block_id` (`block_id`),
+  INDEX `parent` (`parent`),
+  INDEX `miner_addr_id` (`miner_id`),
+  CONSTRAINT `FK_uncle_blocks_address` FOREIGN KEY (`miner_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_uncle_blocks_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_uncle_blocks_blocks_2` FOREIGN KEY (`parent`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
@@ -113,12 +113,11 @@ CREATE TABLE `transactions` (
   `nonce` BIGINT(20) UNSIGNED NOT NULL,
   `input` BLOB NOT NULL,
   PRIMARY KEY (`internal_id`),
-  INDEX `to` (`to_id`),
-  INDEX `from` (`from_id`),
+  INDEX `to_addr_id` (`to_id`),
+  INDEX `from_addr_id` (`from_id`),
   INDEX `hash` (`hash`),
-  INDEX `FK_transactions_blocks` (`block_id`),
-  INDEX `block_id_index` (`block_id`, `index`),
-  INDEX `FK_transactions_address_3` (`contract_id`),
+  INDEX `block_id` (`block_id`),
+  INDEX `contract_id` (`contract_id`),
   CONSTRAINT `FK_transactions_address` FOREIGN KEY (`from_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_transactions_address_2` FOREIGN KEY (`to_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_transactions_address_3` FOREIGN KEY (`contract_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -137,7 +136,7 @@ CREATE TABLE `balance` (
   `balance` VARBINARY(16) NOT NULL,
   INDEX `FK_balance_blocks` (`block_id`),
   INDEX `address_id` (`address_id`),
-  CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`),
+  CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_balance_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
@@ -146,7 +145,8 @@ CREATE TABLE `balance` (
 
 
 
-
+/*
+TODO remove this (1&2)
 CREATE TABLE `balance_changes` (
   `block_id` INT(10) UNSIGNED NOT NULL,
   `address_id` INT(10) UNSIGNED NOT NULL,
@@ -154,9 +154,10 @@ CREATE TABLE `balance_changes` (
   `delta` VARBINARY(16) NOT NULL,
   INDEX `FK_balance_changes_address` (`address_id`),
   INDEX `FK_addresses_transactions` (`block_id`),
-  CONSTRAINT `FK_addresses_transactions` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`),
-  CONSTRAINT `FK_balance_changes_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`)
+  CONSTRAINT `FK_addresses_transactions` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_balance_changes_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB
 ;
+*/

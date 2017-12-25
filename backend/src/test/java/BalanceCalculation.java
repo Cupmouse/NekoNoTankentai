@@ -12,35 +12,35 @@ public class BalanceCalculation {
     public static final BigInteger BLOCK_REWARD = BigInteger.valueOf(7500000000000000000L);
 
     public static void main(String[] args) {
-        final String addr = "2b14a494921680b54fd234d4d20a430d6a03b5c1";
+        final String addr = "798C5f0816f83078Cdf2de43dB2509Dbac94B176";
         final DatabaseManager databaseManager = new DatabaseManager();
 
         Connection connection = null;
 
         try {
-            databaseManager.init("jdbc:mysql://localhost:3306/nek_blockchain", "explorer", "hA3EHoqarOlu25bE5iY6h41eFEfOz1");
+            databaseManager.init("jdbc:mysql://localhost:3306/boukentai", "root", "");
 
             connection = databaseManager.getConnection();
 
             // Receiving
-            final PreparedStatement prpstmtr = connection.prepareStatement("SELECT `value` FROM transactions WHERE `to` = UNHEX(?) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
+            final PreparedStatement prpstmtr = connection.prepareStatement("SELECT `value` FROM transactions WHERE to_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
             prpstmtr.setString(1, addr);
             final ResultSet resultSetR = prpstmtr.executeQuery();
 
             BigInteger rsum = BigInteger.ZERO;
 
             while (resultSetR.next()) {
-                /* Subtracting sending fee */
                 rsum = rsum.add(new BigInteger(resultSetR.getBytes(1)));
             }
 
             prpstmtr.close();
 
             // Sending
-            final PreparedStatement prpstmts = connection.prepareStatement("SELECT `value`, gas_used, gas_price FROM transactions WHERE `from` = UNHEX(?) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
+            final PreparedStatement prpstmts = connection.prepareStatement("SELECT `value`, gas_used, gas_price FROM transactions WHERE from_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND EXISTS(SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND forked = 0)");
             prpstmts.setString(1, addr);
             final ResultSet resultSetS = prpstmts.executeQuery();
 
+            /* Subtracting sending fee */
             BigInteger ssum = BigInteger.ZERO;
             while (resultSetS.next()) {
                 final BigInteger executionFee = new BigInteger(resultSetS.getString(2)).multiply(new BigInteger(resultSetS.getBytes(3)));
@@ -53,7 +53,7 @@ public class BalanceCalculation {
             // Transaction fee return
             BigInteger tsum = BigInteger.ZERO;
 
-            final PreparedStatement prpstmtt = connection.prepareStatement("SELECT transactions.gas_used, transactions.gas_price FROM transactions WHERE EXISTS (SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND blocks.miner = UNHEX(?) AND forked = 0)");
+            final PreparedStatement prpstmtt = connection.prepareStatement("SELECT transactions.gas_used, transactions.gas_price FROM transactions WHERE EXISTS (SELECT * FROM blocks WHERE blocks.internal_id = transactions.block_id AND blocks.miner_addr_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND forked = 0)");
             prpstmtt.setString(1, addr);
 
             final ResultSet resultSetT = prpstmtt.executeQuery();
@@ -69,7 +69,7 @@ public class BalanceCalculation {
 
             // Normal block reward
 
-            final PreparedStatement prpstmtb = connection.prepareStatement("SELECT 1 FROM blocks WHERE blocks.miner = UNHEX(?) AND forked = 0");
+            final PreparedStatement prpstmtb = connection.prepareStatement("SELECT 1 FROM blocks WHERE blocks.miner_addr_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND forked = 0");
             prpstmtb.setString(1, addr);
             final ResultSet resultSetB = prpstmtb.executeQuery();
 
@@ -81,7 +81,7 @@ public class BalanceCalculation {
             prpstmtb.close();
 
             // Uncle block reward
-            final PreparedStatement prpstmtu = connection.prepareStatement("SELECT SUM(uncle_blocks.number + 8 - blocks.number) FROM uncle_blocks INNER JOIN blocks ON uncle_blocks.block_id = blocks.internal_id WHERE uncle_blocks.miner = UNHEX(?) AND blocks.forked = 0");
+            final PreparedStatement prpstmtu = connection.prepareStatement("SELECT SUM(uncle_blocks.number + 8 - blocks.number) FROM uncle_blocks INNER JOIN blocks ON uncle_blocks.block_id = blocks.internal_id WHERE uncle_blocks.miner_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND blocks.forked = 0");
             prpstmtu.setString(1, addr);
             final ResultSet resultSetU = prpstmtu.executeQuery();
 
@@ -100,7 +100,7 @@ public class BalanceCalculation {
                     "(SELECT SUM(" +
                     "1" +
                     ") FROM uncle_blocks WHERE uncle_blocks.block_id = blocks.internal_id LIMIT 2)" +
-                    ") FROM blocks WHERE blocks.miner = UNHEX(?) AND blocks.forked = 0");
+                    ") FROM blocks WHERE blocks.miner_addr_id = (SELECT internal_id FROM address WHERE address = UNHEX(?)) AND blocks.forked = 0");
             prpstmtm.setString(1, addr);
 
             final ResultSet resultSetM = prpstmtm.executeQuery();

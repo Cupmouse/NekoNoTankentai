@@ -43,7 +43,7 @@ public class BlockNumberEndPoint {
         final String message = block.getNumber().toString();
         lastBlockNumber = message;
 
-        // TODO 多分非同期なのでエラーが起こる
+        // TODO Expecting an error here, caused by asynchronous issue
         for (Session session : sessionQueue) {
             session.getAsyncRemote().sendText(message);
         }

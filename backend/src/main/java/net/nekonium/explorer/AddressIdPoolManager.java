@@ -27,15 +27,11 @@ public class AddressIdPoolManager {
     }
 
     private BigInteger getCached(String prefixedAddress) throws AddressPoolException {
-        final NonNullPair<AddressType, BigInteger> cached = addressIdCache.get(prefixedAddress);
+        final NonNullPair<AddressType, BigInteger> cached = addressIdCache.get(prefixedAddress);    // The element accessed will be top on the list and be the least probable to un-cached
 
         if (cached == null) {
             throw new AddressPoolException("Requested but address " + prefixedAddress + " is not cached");
         }
-
-        /* This moves this cache to the latest element on the map (least probable to be un-cached) */
-        this.addressIdCache.remove(prefixedAddress);
-        this.addressIdCache.put(prefixedAddress, cached);
 
         return cached.getB();
     }
@@ -47,7 +43,7 @@ public class AddressIdPoolManager {
             throw new AddressPoolException("Requested but address " + prefixedAddress + " is not cached");
         }
         if (cached.getA() != addressType) {
-            throw new AddressPoolException("Detected cached account type inconsistency. Expected " + addressType + ", but cached is " + cached.getA());
+            throw new AddressPoolException("Detected cached account type inconsistency. Expected [" + addressType + "], but cached is [" + cached.getA() + "] : [" + prefixedAddress + "]");
         }
 
         return cached.getB();
@@ -81,11 +77,11 @@ public class AddressIdPoolManager {
                 }
 
                 if (recordedAddressType != addressType) {
-                    throw new IllegalDatabaseStateException("Address type mismatch for [" + prefixedAddress + "]");
+                    throw new IllegalDatabaseStateException("Address type mismatch for [" + prefixedAddress + "], expected [" + addressType + "] got [" + recordedAddressType + "]");
                 }
             }
 
-            addressId = new BigInteger(resultSet.getString(1));
+            addressId = new BigInteger(resultSet.getString(2));
 
             prpstmt.close();
         } else {
@@ -95,7 +91,7 @@ public class AddressIdPoolManager {
 
             /* Insert an address into the database */
 
-            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO address VALUES (NULL, ? ,?)", RETURN_GENERATED_KEYS);
+            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO address VALUES (NULL, UNHEX(?) ,?)", RETURN_GENERATED_KEYS);
             prpstmti.setString(1, prefixedAddress.substring(2));
             prpstmti.setString(2, addressType.name());
             prpstmti.executeUpdate();
@@ -117,27 +113,30 @@ public class AddressIdPoolManager {
     }
 
     /**
+     * Look up address id by prefixed address (0x[40 digit hex]).<br>
+     * If {@code careType} is {@code true}, {@link AddressType} of {@code prefixedAddress} must be the same as {@code addressType} and on the database,
+     * and if {@code prefixedAddress} is first time to appear on the database, its type is recorded as {@code addressType}.<br>
+     * If {@code careType} is {@code false}, it must NOT be the same, and if the address was not recorded on the database then it will inserted as {@code addressType} type.
      *
      * @param connection
-     * @return address_id
-     * @throws IllegalBlockchainStateException If address type on parameter and on the database are different
+     * @param prefixedAddress
+     * @param addressType
+     * @param careType Set true to throw an {@link IllegalDatabaseStateException} when {@code addressType} specified is not the same as on the database
+     * @return address_id The address id of the address specified.
+     * @throws IllegalBlockchainStateException If {@code addressType} and on the database are different (check is active when {@code careType} is {@code true}).
      */
-    public BigInteger getOrInsertAddressId(Connection connection, String prefixedAddress, AddressType addressType) throws SQLException, IllegalDatabaseStateException, AddressPoolException {
+    public BigInteger getOrInsertAddressId(Connection connection, String prefixedAddress, AddressType addressType, boolean careType) throws SQLException, IllegalDatabaseStateException, AddressPoolException {
         if (isCached(prefixedAddress)) {  // Find it from cache
-            return getCachedAssume(prefixedAddress, addressType);   // Cached, return
+            if (careType) {
+                return getCachedAssume(prefixedAddress, addressType);   // Cached, return
+            } else {
+                return getCached(prefixedAddress);
+            }
         }
 
         /* Not cached, find address id */
 
-        return getOrInsertDatabase(connection, prefixedAddress, addressType, true);
-    }
-
-    public BigInteger getOrInsertAddressId(Connection connection, String prefixedAddress) throws SQLException, IllegalDatabaseStateException, AddressPoolException {
-        if (isCached(prefixedAddress)) {
-            return getCached(prefixedAddress);
-        }
-
-        return getOrInsertDatabase(connection, prefixedAddress, null, false);
+        return getOrInsertDatabase(connection, prefixedAddress, addressType, careType);
     }
 
     /**

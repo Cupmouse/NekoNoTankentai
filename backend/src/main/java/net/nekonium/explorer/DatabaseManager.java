@@ -18,7 +18,7 @@ public class DatabaseManager {
         config.setPassword(password);
 
         this.dataSource = new HikariDataSource(config);
-        // 接続してみる
+        // Try to connect to the database, if it fail, throws an exception
         this.dataSource.getConnection();
     }
 
