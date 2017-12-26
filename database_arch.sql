@@ -132,10 +132,12 @@ CREATE TABLE `transactions` (
 
 CREATE TABLE `balance` (
   `block_id` INT(11) UNSIGNED NOT NULL,
+  `number` INT(10) UNSIGNED NOT NULL,
   `address_id` INT(10) UNSIGNED NOT NULL,
   `balance` VARBINARY(16) NOT NULL,
-  INDEX `FK_balance_blocks` (`block_id`),
+  INDEX `block_id` (`block_id`),
   INDEX `address_id` (`address_id`),
+  INDEX `number` (`number`),
   CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_balance_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
@@ -145,19 +147,18 @@ CREATE TABLE `balance` (
 
 
 
-/*
-TODO remove this (1&2)
+
+# TODO remove this (1&2)
 CREATE TABLE `balance_changes` (
   `block_id` INT(10) UNSIGNED NOT NULL,
   `address_id` INT(10) UNSIGNED NOT NULL,
   `negative` BIT(1) NOT NULL,
   `delta` VARBINARY(16) NOT NULL,
-  INDEX `FK_balance_changes_address` (`address_id`),
-  INDEX `FK_addresses_transactions` (`block_id`),
+  INDEX `address_id` (`address_id`),
+  INDEX `block_id` (`block_id`),
   CONSTRAINT `FK_addresses_transactions` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_balance_changes_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB
 ;
-*/

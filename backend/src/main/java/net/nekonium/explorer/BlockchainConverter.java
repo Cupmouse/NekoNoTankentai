@@ -484,9 +484,8 @@ public class BlockchainConverter implements Runnable {
                 continue;   // Balance not changed, skip this   TODO is this ok?
             }
 
-/*
-            Commented because it is not needed for now
-            TODO remove it (1&2)
+//            Commented because it is not needed for now
+//            TODO remove it (1&2)
 
             // Balance changes
             final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES (?, ?, ?, ?)");
@@ -497,20 +496,19 @@ public class BlockchainConverter implements Runnable {
             prpstmt1.executeUpdate();
 
             prpstmt1.close();
-*/
 
             // Balance
 
             // Get the previous balance of the address
             PreparedStatement prpstmt2 = connection.prepareStatement(
-                    "SELECT balance FROM balance LEFT JOIN blocks ON block_id = blocks.internal_id " +
-                            "WHERE forked = 0 AND address_id = ? AND block_id < ? " +
-                            "ORDER BY block_id DESC LIMIT 1");// Using left join for now don't know about the performance
-            // FIXME Is it ok to set order by block_id? Is it sure that the order is always the same as block number?
-            // FIXME Change 'ORDER BY block_id' to 'number' to get precise results (and block_id < ?)
-            // FIXME but maybe affect the performance (references joined tables)???
+                    "SELECT balance FROM balance " +
+                            "LEFT JOIN blocks ON block_id = blocks.internal_id " +
+                            "WHERE forked = 0 AND address_id = ? AND balance.number < ? " +
+                            "ORDER BY balance.number DESC LIMIT 1");// Using left join for now don't know about the performance
+            // Go-nekonium is stupid about block reorg, sometimes it emits the same block that was known 2~3 before
+            // It is confusing, and because of that, internal_id is not the same order as block number
             prpstmt2.setString(1, addressId.toString());
-            prpstmt2.setString(2, blockInternalId.toString());
+            prpstmt2.setString(2, block.getNumber().toString());
 
             ResultSet resultSet2 = prpstmt2.executeQuery();
 
@@ -532,10 +530,11 @@ public class BlockchainConverter implements Runnable {
 
             // Insert the balance
 
-            PreparedStatement prpstmt3 = connection.prepareStatement("INSERT INTO balance VALUES (?, ?, ?)");
+            PreparedStatement prpstmt3 = connection.prepareStatement("INSERT INTO balance VALUES (?, ?, ?, ?)");
             prpstmt3.setString(1, blockInternalId.toString());
-            prpstmt3.setString(2, addressId.toString());
-            prpstmt3.setBytes(3, balance.toByteArray());
+            prpstmt3.setString(2, block.getNumber().toString());
+            prpstmt3.setString(3, addressId.toString());
+            prpstmt3.setBytes(4, balance.toByteArray());
 
             prpstmt3.executeUpdate();
             prpstmt3.close();
@@ -561,7 +560,7 @@ public class BlockchainConverter implements Runnable {
             logger.info("Checking block relation at {}", parentBlockNumber);
 
             /* Get parent's block entry from the database */
-            final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id, NEKH((SELECT hash FROM blocks WHERE internal_id = blocks.parent)) FROM blocks WHERE number = ? AND hash = UNHEX(?)");
+            final PreparedStatement prpstmt = connection.prepareStatement("SELECT blocks.internal_id, NEKH(b2.hash) FROM blocks LEFT JOIN blocks AS b2 ON blocks.parent = b2.internal_id WHERE blocks.number = ? AND blocks.hash = UNHEX(?)");
             prpstmt.setString(1, parentBlockNumber.toString());
             prpstmt.setString(2, expectedParentBlockHash.substring(2));
 
@@ -656,17 +655,15 @@ public class BlockchainConverter implements Runnable {
 
         for (Pair<String, BigInteger> pair : distributed) {
             final BigInteger addressId = addressIdPool.getOrInsertAddressId(connection, pair.getKey(), AddressType.NORMAL, true);
-/*
-            TODO remove this (1&2)
+//            TODO remove this (1&2)
             final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES ((SELECT internal_id FROM blocks WHERE number = 0), ?, 0, ?)");
             prpstmt1.setString(1, addressId.toString());
             prpstmt1.setBytes(2, pair.getValue().toByteArray());
             prpstmt1.executeUpdate();
 
             prpstmt1.close();
-*/
 
-            final PreparedStatement prpstmt2 = connection.prepareStatement("INSERT INTO balance VALUES ((SELECT internal_id FROM blocks WHERE number = 0), ?, ?)");
+            final PreparedStatement prpstmt2 = connection.prepareStatement("INSERT INTO balance SELECT internal_id, 0, ?, ? FROM blocks WHERE number = 0");
             prpstmt2.setString(1, addressId.toString());
             prpstmt2.setBytes(2, pair.getValue().toByteArray());
             prpstmt2.executeUpdate();
