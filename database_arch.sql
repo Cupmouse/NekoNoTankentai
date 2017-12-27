@@ -20,7 +20,7 @@ DELIMITER ;
 
 
 
-CREATE TABLE `address` (
+CREATE TABLE `addresses` (
   `internal_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   `address` BINARY(20) NOT NULL,
   `type` ENUM('NORMAL','CONTRACT') NOT NULL,
@@ -41,7 +41,7 @@ CREATE TABLE `blocks` (
   `hash` BINARY(32) NOT NULL,
   `parent` INT(10) UNSIGNED NULL DEFAULT NULL COMMENT 'Parent block\'s internal_id',
   `timestamp` DATETIME NOT NULL,
-  `miner_addr_id` INT(10) UNSIGNED NOT NULL,
+  `miner_id` INT(10) UNSIGNED NOT NULL,
   `difficulty` BIGINT(20) UNSIGNED NOT NULL,
   `gas_limit` INT(11) UNSIGNED NOT NULL,
   `gas_used` INT(11) UNSIGNED NOT NULL,
@@ -50,13 +50,13 @@ CREATE TABLE `blocks` (
   `size` SMALLINT(5) UNSIGNED NOT NULL,
   `forked` BIT(1) NOT NULL,
   PRIMARY KEY (`internal_id`),
-  INDEX `miner` (`miner_addr_id`),
+  INDEX `miner` (`miner_id`),
   INDEX `number` (`number`),
   INDEX `hash` (`hash`),
   INDEX `timestamp` (`timestamp`),
   INDEX `FK_blocks_blocks1` (`parent`),
   INDEX `forked` (`forked`),
-  CONSTRAINT `FK_blocks_address` FOREIGN KEY (`miner_addr_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_blocks_address` FOREIGN KEY (`miner_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_blocks_blocks_` FOREIGN KEY (`parent`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
@@ -87,7 +87,7 @@ CREATE TABLE `uncle_blocks` (
   INDEX `block_id` (`block_id`),
   INDEX `parent` (`parent`),
   INDEX `miner_addr_id` (`miner_id`),
-  CONSTRAINT `FK_uncle_blocks_address` FOREIGN KEY (`miner_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_uncle_blocks_address` FOREIGN KEY (`miner_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_uncle_blocks_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_uncle_blocks_blocks_2` FOREIGN KEY (`parent`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
@@ -118,9 +118,9 @@ CREATE TABLE `transactions` (
   INDEX `hash` (`hash`),
   INDEX `block_id` (`block_id`),
   INDEX `contract_id` (`contract_id`),
-  CONSTRAINT `FK_transactions_address` FOREIGN KEY (`from_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT `FK_transactions_address_2` FOREIGN KEY (`to_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT `FK_transactions_address_3` FOREIGN KEY (`contract_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_transactions_address` FOREIGN KEY (`from_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_transactions_address_2` FOREIGN KEY (`to_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_transactions_address_3` FOREIGN KEY (`contract_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_transactions_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
@@ -138,7 +138,7 @@ CREATE TABLE `balance` (
   INDEX `block_id` (`block_id`),
   INDEX `address_id` (`address_id`),
   INDEX `number` (`number`),
-  CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_balance_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
@@ -157,7 +157,7 @@ CREATE TABLE `balance_changes` (
   INDEX `address_id` (`address_id`),
   INDEX `block_id` (`block_id`),
   CONSTRAINT `FK_addresses_transactions` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT `FK_balance_changes_address` FOREIGN KEY (`address_id`) REFERENCES `address` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
+  CONSTRAINT `FK_balance_changes_address` FOREIGN KEY (`address_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB

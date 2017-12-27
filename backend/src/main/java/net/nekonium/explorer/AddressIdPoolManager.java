@@ -56,7 +56,7 @@ public class AddressIdPoolManager {
     private BigInteger getOrInsertDatabase(Connection connection, String prefixedAddress, AddressType addressType, boolean careType) throws SQLException, IllegalDatabaseStateException, AddressPoolException {
         /* Not cached, find address id */
 
-        final PreparedStatement prpstmt = connection.prepareStatement("SELECT type, internal_id FROM address WHERE address = UNHEX(?)");
+        final PreparedStatement prpstmt = connection.prepareStatement("SELECT type, internal_id FROM addresses WHERE address = UNHEX(?)");
         prpstmt.setString(1, prefixedAddress.substring(2));
 
         final ResultSet resultSet = prpstmt.executeQuery();
@@ -91,7 +91,7 @@ public class AddressIdPoolManager {
 
             /* Insert an address into the database */
 
-            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO address VALUES (NULL, UNHEX(?) ,?)", RETURN_GENERATED_KEYS);
+            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO addresses VALUES (NULL, UNHEX(?) ,?)", RETURN_GENERATED_KEYS);
             prpstmti.setString(1, prefixedAddress.substring(2));
             prpstmti.setString(2, addressType.name());
             prpstmti.executeUpdate();
@@ -153,7 +153,7 @@ public class AddressIdPoolManager {
             return getCached(prefixedAddress);
         }
 
-        final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id FROM address WHERE address = UNHEX(?)");
+        final PreparedStatement prpstmt = connection.prepareStatement("SELECT internal_id FROM addresses WHERE address = UNHEX(?)");
         prpstmt.setString(1, prefixedAddress.substring(2));
 
         final ResultSet resultSet = prpstmt.executeQuery();

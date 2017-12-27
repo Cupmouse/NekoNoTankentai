@@ -1,8 +1,8 @@
 package net.nekonium.explorer;
 
-import javafx.util.Pair;
 import net.nekonium.explorer.util.IllegalBlockchainStateException;
 import net.nekonium.explorer.util.IllegalDatabaseStateException;
+import net.nekonium.explorer.util.NonNullPair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;
@@ -330,18 +330,18 @@ public class BlockchainConverter implements Runnable {
     private void insertUncles(Connection connection, EthBlock.Block[] uncleBlocks, BigInteger blockInternalId) throws SQLException {
         int n;
 
+        // Reusing statement
+        final PreparedStatement prpstmt = connection.prepareStatement(
+                "INSERT INTO uncle_blocks VALUES " +
+                        "(NULL, ?, ?, ?, UNHEX(?), " +
+                        "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?) AND forked = 0), " +  // Search for this uncle's parent block.
+                        // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
+                        "FROM_UNIXTIME(?), ?, ?, ?, ?, UNHEX(?), ?, ?)");
+
         for (int i = 0; i < uncleBlocks.length; i++) {
             final EthBlock.Block uncleBlock = uncleBlocks[i];
 
             final BigInteger uncleMinerAddressId = addressIdPool.getOrInsertAddressId(connection, uncleBlock.getMiner(), AddressType.NORMAL, false); // Get or insert address
-
-            final PreparedStatement prpstmt = connection.prepareStatement(
-                    "INSERT INTO uncle_blocks VALUES " +
-                            "(NULL, ?, ?, ?, UNHEX(?), " +
-                            "(SELECT internal_id FROM blocks WHERE blocks.number = ? AND hash = UNHEX(?) AND forked = 0), " +  // Search for this uncle's parent block.
-                            // If there are more than 2, it throws exception, if there are no parent found, it also throws exception
-                            "FROM_UNIXTIME(?), ?, ?, ?, ?, UNHEX(?), ?, ?)");
-
 
             n = 0;
             prpstmt.setString(++n, uncleBlock.getNumber().toString());           // This uncle block's block number
@@ -360,12 +360,19 @@ public class BlockchainConverter implements Runnable {
             prpstmt.setString(++n, uncleBlock.getSize().toString());
 
             prpstmt.executeUpdate();
-            prpstmt.close();
         }
+        prpstmt.close();
     }
 
     private void insertTransactions(Connection connection, Transaction[] transactions, TransactionReceipt[] transactionReceipts, BigInteger blockInternalId) throws SQLException {
         int n;
+
+        // Reusing statement
+        final PreparedStatement prpstmt = connection.prepareStatement(
+                "INSERT INTO transactions VALUES " +
+                        "(NULL, ?, ?, UNHEX(?), " +
+                        "(SELECT internal_id FROM addresses WHERE address = UNHEX(?)), " +   // The from address should exists before this transaction
+                        "?, ?, ?, ?, ?, ?, ?, UNHEX(?))");
 
         for (int i = 0; i < transactions.length; i++) {
             final Transaction transaction = transactions[i];
@@ -385,11 +392,6 @@ public class BlockchainConverter implements Runnable {
                 contractAddressId = addressIdPool.getOrInsertAddressId(connection, transactionReceipt.getContractAddress(), AddressType.CONTRACT, true);
             }
 
-            final PreparedStatement prpstmt = connection.prepareStatement(
-                    "INSERT INTO transactions VALUES " +
-                            "(NULL, ?, ?, UNHEX(?), " +
-                            "(SELECT internal_id FROM address WHERE address = UNHEX(?)), " +   // The from address should exists before this transaction
-                            "?, ?, ?, ?, ?, ?, ?, UNHEX(?))");
             n = 0;
             prpstmt.setString(++n, blockInternalId.toString());
             prpstmt.setString(++n, transaction.getTransactionIndex().toString());
@@ -405,8 +407,9 @@ public class BlockchainConverter implements Runnable {
             prpstmt.setString(++n, transaction.getInput().substring(2));
 
             prpstmt.executeUpdate();
-            prpstmt.close();
         }
+
+        prpstmt.close();
     }
 
     private void addBigIntegerOnMap(Map<BigInteger, BigInteger> map, BigInteger addr, BigInteger bigInteger) {
@@ -475,6 +478,19 @@ public class BlockchainConverter implements Runnable {
         }
 
 
+        final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES (?, ?, ?, ?)");
+
+        // Balance
+        final PreparedStatement prpstmt2 = connection.prepareStatement(
+                "SELECT balance FROM balance " +
+                        "LEFT JOIN blocks ON block_id = blocks.internal_id " +
+                        "WHERE forked = 0 AND address_id = ? AND balance.number < ? " +
+                        "ORDER BY balance.number DESC LIMIT 1");// Using left join for now don't know about the performance
+        // Go-nekonium is stupid about block reorg, sometimes it emits the same block that was known 2~3 before
+        // It is confusing, and because of that, internal_id is not the same order as block number
+
+        final PreparedStatement prpstmt3 = connection.prepareStatement("INSERT INTO balance VALUES (?, ?, ?, ?)");
+
         /* Insert every balance change / its current balance */
         for (Map.Entry<BigInteger, BigInteger> entry : addresses.entrySet()) {
             final BigInteger addressId = entry.getKey();
@@ -488,25 +504,14 @@ public class BlockchainConverter implements Runnable {
 //            TODO remove it (1&2)
 
             // Balance changes
-            final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES (?, ?, ?, ?)");
             prpstmt1.setString(1, blockInternalId.toString());
             prpstmt1.setString(2, addressId.toString());
             prpstmt1.setInt(3, balanceChange.signum() == -1 ? 1 : 0);    // If balance change is negative then 1 otherwise 0
             prpstmt1.setBytes(4, balanceChange.abs().toByteArray());
             prpstmt1.executeUpdate();
 
-            prpstmt1.close();
-
-            // Balance
 
             // Get the previous balance of the address
-            PreparedStatement prpstmt2 = connection.prepareStatement(
-                    "SELECT balance FROM balance " +
-                            "LEFT JOIN blocks ON block_id = blocks.internal_id " +
-                            "WHERE forked = 0 AND address_id = ? AND balance.number < ? " +
-                            "ORDER BY balance.number DESC LIMIT 1");// Using left join for now don't know about the performance
-            // Go-nekonium is stupid about block reorg, sometimes it emits the same block that was known 2~3 before
-            // It is confusing, and because of that, internal_id is not the same order as block number
             prpstmt2.setString(1, addressId.toString());
             prpstmt2.setString(2, block.getNumber().toString());
 
@@ -526,20 +531,18 @@ public class BlockchainConverter implements Runnable {
                 balance = balanceChange;
             }
 
-            prpstmt2.close();   // Don't forget to close the statement!
-
             // Insert the balance
-
-            PreparedStatement prpstmt3 = connection.prepareStatement("INSERT INTO balance VALUES (?, ?, ?, ?)");
             prpstmt3.setString(1, blockInternalId.toString());
             prpstmt3.setString(2, block.getNumber().toString());
             prpstmt3.setString(3, addressId.toString());
             prpstmt3.setBytes(4, balance.toByteArray());
 
             prpstmt3.executeUpdate();
-            prpstmt3.close();
         }
 
+        prpstmt1.close();
+        prpstmt2.close();   // Don't forget to close the statement!
+        prpstmt3.close();
     }
 
     private void reorgValidBlock(final Connection connection, final BigInteger validBlockNumber, final String validParentHash) throws SQLException, IllegalDatabaseStateException, IOException {
@@ -630,8 +633,8 @@ public class BlockchainConverter implements Runnable {
         // Note! No committing!
     }
 
-    private void addressPair(final List<Pair<String, BigInteger>> list, final String addressPrefixed, final String value) {
-        list.add(new Pair<>(addressPrefixed, new BigInteger(value)));
+    private void addressPair(final List<NonNullPair<String, BigInteger>> list, final String addressPrefixed, final String value) {
+        list.add(new NonNullPair<>(addressPrefixed, new BigInteger(value)));
     }
 
     /**
@@ -646,30 +649,30 @@ public class BlockchainConverter implements Runnable {
         this.logger.info("Setting up premined addresses...");
 
         // These are premine (allocation), set at block #0
-        final List<Pair<String, BigInteger>> distributed = new ArrayList<>();
+        final List<NonNullPair<String, BigInteger>> distributed = new ArrayList<>();
         addressPair(distributed, "0xBbFdCBbD22960B6fcf4a0a101b816614aa551c4b", "2448421000000000000000000");
         addressPair(distributed, "0xBc4517bc2ddE774781E3D7B49677DE3449D4D581", "2000000000000000000000000");
         addressPair(distributed, "0x62A87d9716b5826063d98294688ec76F774034d6", "6000000000000000000000000");
         addressPair(distributed, "0x817570E7E0838ca0c6c136bF9701962FF7a6e562", "1000000000000000000000000");
         addressPair(distributed, "0xbd2746c132393fD822D971EecAF7f4cd770A5472", "1000000000000000000000000");
 
-        for (Pair<String, BigInteger> pair : distributed) {
-            final BigInteger addressId = addressIdPool.getOrInsertAddressId(connection, pair.getKey(), AddressType.NORMAL, true);
+        // Reusing prepared statement makes processing time a bit faster (at least told so)
+        final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES ((SELECT internal_id FROM blocks WHERE number = 0), ?, 0, ?)");
+        final PreparedStatement prpstmt2 = connection.prepareStatement("INSERT INTO balance SELECT internal_id, 0, ?, ? FROM blocks WHERE number = 0");
+
+        for (NonNullPair<String, BigInteger> pair : distributed) {
+            final BigInteger addressId = addressIdPool.getOrInsertAddressId(connection, pair.getA(), AddressType.NORMAL, true);
 //            TODO remove this (1&2)
-            final PreparedStatement prpstmt1 = connection.prepareStatement("INSERT INTO balance_changes VALUES ((SELECT internal_id FROM blocks WHERE number = 0), ?, 0, ?)");
             prpstmt1.setString(1, addressId.toString());
-            prpstmt1.setBytes(2, pair.getValue().toByteArray());
+            prpstmt1.setBytes(2, pair.getB().toByteArray());
             prpstmt1.executeUpdate();
 
-            prpstmt1.close();
-
-            final PreparedStatement prpstmt2 = connection.prepareStatement("INSERT INTO balance SELECT internal_id, 0, ?, ? FROM blocks WHERE number = 0");
             prpstmt2.setString(1, addressId.toString());
-            prpstmt2.setBytes(2, pair.getValue().toByteArray());
+            prpstmt2.setBytes(2, pair.getB().toByteArray());
             prpstmt2.executeUpdate();
-
-            prpstmt2.close();
         }
+        prpstmt1.close();
+        prpstmt2.close();
     }
 
     private class NormalSubscriber implements Action1<EthBlock> {
