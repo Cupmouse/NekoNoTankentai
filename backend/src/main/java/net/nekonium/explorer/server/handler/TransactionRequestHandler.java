@@ -14,7 +14,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import static net.nekonium.explorer.server.handler.HandlerCommon.TRANSACTION_COLUMN;
 import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
@@ -84,34 +83,24 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         try {
             connection = ExplorerServer.getInstance().getBackend().getDatabaseManager().getConnection();
 
-            final PreparedStatement prpstmt;
+            final Object transaction;
+
             if (parameters instanceof TransactionRequest.NumberAndIndex) {
-                prpstmt = connection.prepareStatement(
-                        "SELECT  " + TRANSACTION_COLUMN + " FROM transactions " +
-                                "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE number = ? LIMIT 1) AND `index` = ? LIMIT 1");
-                prpstmt.setString(1, ((TransactionRequest.NumberAndIndex) parameters).number.toString());
-                prpstmt.setInt(2, ((TransactionRequest.NumberAndIndex) parameters).index);
-            } else {
-                /* hash */
+                // Number and index
 
-                prpstmt = connection.prepareStatement(
-                        "SELECT " + TRANSACTION_COLUMN + " FROM transactions WHERE hash = UNHEX(?) LIMIT 1");
-                prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
+                transaction = HandlerCommon.getTransaction(connection, "blocks.forked = 0 AND blocks.number = ? AND transactions.index = ? LIMIT 1", prpstmt -> {
+                    prpstmt.setString(1, ((TransactionRequest.NumberAndIndex) parameters).number.toString());
+                    prpstmt.setInt(2, ((TransactionRequest.NumberAndIndex) parameters).index);
+                }, false);
+            } else {
+                // Hash
+
+                transaction = HandlerCommon.getTransaction(connection, "blocks.forked = 0 AND transaction.hash = UNHEX(?) LIMIT 1", prpstmt -> {
+                    prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
+                }, false);
             }
 
-            final ResultSet resultSet = prpstmt.executeQuery();
-
-            if (resultSet.next()) {
-                final JSONObject jsonObjectTransaction = HandlerCommon.getTransaction(resultSet);
-
-                prpstmt.close();
-
-                return jsonObjectTransaction;
-            } else {
-                prpstmt.close();
-
-                return false;   // Transaction not found
-            }
+            return transaction; // If transaction was not found, false returns
         } finally {
             if (connection != null) {
                 try {

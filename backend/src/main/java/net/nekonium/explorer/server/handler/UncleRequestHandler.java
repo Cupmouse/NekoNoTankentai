@@ -6,7 +6,6 @@ import net.nekonium.explorer.server.RequestHandler;
 import net.nekonium.explorer.util.FormatValidator;
 import net.nekonium.explorer.util.JSONUtil;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.math.BigInteger;
@@ -16,7 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import static net.nekonium.explorer.server.handler.HandlerCommon.UNCLE_COLUMNS;
-import static net.nekonium.explorer.server.handler.HandlerCommon.getUncle;
+import static net.nekonium.explorer.server.handler.HandlerCommon.parseUncleJSON;
 
 public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.UncleRequest> {
 
@@ -129,7 +128,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
             final ResultSet resultSet = prpstmt.executeQuery();
 
             if (resultSet.next()) {
-                final JSONObject jsonObjectUncle = getUncle(resultSet);
+                final JSONObject jsonObjectUncle = parseUncleJSON(resultSet);
 
                 prpstmt.close();
 

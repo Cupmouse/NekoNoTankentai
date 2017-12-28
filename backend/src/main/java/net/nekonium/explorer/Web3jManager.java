@@ -52,7 +52,7 @@ public class Web3jManager {
         return web3j;
     }
 
-    enum ConnectionType {
+    public enum ConnectionType {
         IPC_UNIX, IPC_WINDOWS, RPC
     }
 }

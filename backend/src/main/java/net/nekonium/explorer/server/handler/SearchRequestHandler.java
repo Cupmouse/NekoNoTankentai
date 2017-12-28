@@ -94,7 +94,7 @@ public class SearchRequestHandler implements RequestHandler<String> {
                 final String hexWithoutPrefix = searchWord.substring(2);
 
                 /* Search for normal address first */
-                final PreparedStatement prpstmt1 = connection.prepareStatement("SELECT NEKH(CASE WHEN `to` = UNHEX(?) THEN `to` ELSE `from` END) FROM transactions WHERE `to` = UNHEX(?) OR `from` = UNHEX(?) LIMIT 1");
+                final PreparedStatement prpstmt1 = connection.prepareStatement("SELECT NEKH(CASE WHEN to_id = (SELECT addresses.internal_id FROM addresses WHERE addresses.address = UNHEX(?)) THEN `to` ELSE `from` END) FROM transactions WHERE `to` = UNHEX(?) OR `from` = UNHEX(?) LIMIT 1");
                 prpstmt1.setString(1, hexWithoutPrefix);
                 prpstmt1.setString(2, hexWithoutPrefix);
                 prpstmt1.setString(3, hexWithoutPrefix);

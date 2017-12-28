@@ -13,10 +13,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import static net.nekonium.explorer.server.handler.HandlerCommon.BLOCK_COLUMN;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.BlockRequest> {
+
+    private static final String BLOCK_COLUMNS = "internal_id, number, NEKH(hash), NEKH((SELECT hash FROM blocks AS t WHERE t.internal_id = blocks.parent)), " +
+            "UNIX_TIMESTAMP(timestamp), NEKH((SELECT address FROM addresses WHERE addresses.internal_id = blocks.miner_id)), " +
+            "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, size";
 
     @Override
     public BlockRequest parseParameters(final JSONObject jsonObject) throws InvalidRequestException {
@@ -116,45 +119,46 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
                 // TODO Forked blocks ?
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + BLOCK_COLUMN + " FROM blocks WHERE number = ? LIMIT 1");
+                        "SELECT " + BLOCK_COLUMNS + " FROM blocks WHERE number = ? AND forked = 0 LIMIT 1");
                 prpstmt.setString(1, parameters.key.toString());
             } else {
                 // type is "hash"
-                prpstmt = connection.prepareStatement("SELECT " + BLOCK_COLUMN + " FROM blocks WHERE hash = UNHEX(?)");
+                prpstmt = connection.prepareStatement("SELECT " + BLOCK_COLUMNS + " FROM blocks WHERE hash = UNHEX(?) AND forked = 0 LIMIT 1");
                 prpstmt.setString(1, ((String) parameters.key));
             }
 
             final ResultSet resultSet = prpstmt.executeQuery();
 
+            if (!resultSet.next()) {
+                prpstmt.close();
+                return false;   // If no blocks are found, content will be just boolean false
+            }
+
             /* Parse result set to json */
 
             final JSONObject jsonObjectContents = new JSONObject();
 
-            final BigInteger blockInternalId;
+            final long blockInternalId = resultSet.getLong(1);
 
-            if (resultSet.next()) {
-                int n = 0;  // Count column number
-
-                blockInternalId = new BigInteger(resultSet.getString(++n));
-                jsonObjectContents.put("internal_id"    , blockInternalId);
-                jsonObjectContents.put("number"         , resultSet.getString(++n));
-                jsonObjectContents.put("hash"           , resultSet.getString(++n));
-                jsonObjectContents.put("parent_hash"    , resultSet.getString(++n));
-                jsonObjectContents.put("timestamp"      , resultSet.getLong(++n));
-                jsonObjectContents.put("miner"          , resultSet.getString(++n));
-                jsonObjectContents.put("difficulty"     , resultSet.getString(++n));
-                jsonObjectContents.put("gas_limit"      , resultSet.getLong(++n));
-                jsonObjectContents.put("gas_used"       , resultSet.getLong(++n));
-                jsonObjectContents.put("extra_data"     , resultSet.getString(++n));
-                jsonObjectContents.put("nonce"          , resultSet.getString(++n));
-                jsonObjectContents.put("sha3_uncles"    , resultSet.getString(++n));
-                jsonObjectContents.put("size"           , resultSet.getInt(++n));
-            } else {
-                return false;   // If no blocks found, content will be just boolean false
-            }
+            HandlerCommon.writeBlock(jsonObjectContents,
+                    blockInternalId,
+                    resultSet.getLong(2),
+                    resultSet.getString(3),
+                    resultSet.getString(4),
+                    resultSet.getLong(5),
+                    resultSet.getString(6),
+                    resultSet.getString(7),
+                    resultSet.getLong(8),
+                    resultSet.getLong(9),
+                    resultSet.getString(10),
+                    resultSet.getString(11),
+                    resultSet.getInt(12),
+                    resultSet.getBoolean(13)
+            );
 
             prpstmt.close();
 
+            // Put transactions if including tx is on
             if (parameters.transactionDetail != BlockRequest.TransactionDetail.NOT_INCLUDE) {
                 /* Get transactions */
 
@@ -162,13 +166,13 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                 jsonObjectContents.put("transactions", transactions);
             }
 
+            // Put uncles if including uncles is on
             if (parameters.uncleDetail != BlockRequest.UncleDetail.NOT_INCLUDE) {
                 /* Get uncle blocks */
 
                 final Object uncleBlocks = getUncleBlocks(connection, blockInternalId, parameters.uncleDetail);
                 jsonObjectContents.put("uncles", uncleBlocks);
             }
-
 
             return jsonObjectContents;
         } finally {
@@ -182,11 +186,11 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
         }
     }
 
-    private Object getUncleBlocks(Connection connection, BigInteger blockInternalId, BlockRequest.UncleDetail detail) throws SQLException {
+    private Object getUncleBlocks(Connection connection, long blockInternalId, BlockRequest.UncleDetail detail) throws SQLException, InvalidRequestException {
         if (detail == BlockRequest.UncleDetail.COUNT) {
             /* Returns uncle count of the block */
             final PreparedStatement prpstmt = connection.prepareStatement("SELECT NEKH(hash) FROM uncle_blocks WHERE block_id = ? ORDER BY `index` ASC");
-            prpstmt.setString(1, blockInternalId.toString());
+            prpstmt.setLong(1, blockInternalId);
 
             final ResultSet resultSet = prpstmt.executeQuery();
             resultSet.last();
@@ -201,12 +205,12 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
             if (detail == BlockRequest.UncleDetail.ALL) {
                 final PreparedStatement prpstmt = connection.prepareStatement(
                         "SELECT " + HandlerCommon.UNCLE_COLUMNS + " FROM uncle_blocks WHERE block_id = ? ORDER BY `index` ASC");
-                prpstmt.setString(1, blockInternalId.toString());
+                prpstmt.setLong(1, blockInternalId);
 
                 final ResultSet resultSet = prpstmt.executeQuery();
 
                 while (resultSet.next()) {
-                    jsonArrayUncles.put(HandlerCommon.getUncle(resultSet));
+                    jsonArrayUncles.put(HandlerCommon.parseUncleJSON(resultSet));
                 }
 
                 prpstmt.close();
@@ -219,16 +223,18 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                 }
 
                 prpstmt.close();
+            } else {
+                throw new InvalidRequestException("Invalid uncle detail");
             }
 
             return jsonArrayUncles;
         }
     }
 
-    private Object getTransactions(Connection connection, BigInteger blockInternalId, BlockRequest.TransactionDetail detail) throws SQLException {
+    private Object getTransactions(Connection connection, long blockInternalId, BlockRequest.TransactionDetail detail) throws SQLException, InvalidRequestException {
         if (detail == BlockRequest.TransactionDetail.COUNT) {
             final PreparedStatement prpstmt = connection.prepareStatement("SELECT 1 FROM transactions WHERE block_id = ?");
-            prpstmt.setString(1, blockInternalId.toString());
+            prpstmt.setLong(1, blockInternalId);
 
             final ResultSet resultSet = prpstmt.executeQuery();
             resultSet.last();
@@ -239,24 +245,65 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
             return count;   // Returns transaction count on the block
         } else {
             /* Here returns JSONArray */
-            final JSONArray jsonArrayTransactions = new JSONArray();
+            final JSONArray jsonArrayTransactions = new JSONArray();    // Initialize json array
 
             if (detail == BlockRequest.TransactionDetail.ALL) {
                 final PreparedStatement prpstmt = connection.prepareStatement(
-                        "SELECT " + HandlerCommon.TRANSACTION_COLUMN + " FROM transactions WHERE block_id = ? ORDER BY `index` ASC");
-                prpstmt.setString(1, blockInternalId.toString());
+                        "SELECT transactions.internal_id, transactions.block_id, blocks.number, transactions.`index`, NEKH(transactions.hash), " +
+                                "NEKH(A1.address), NEKH(A2.address), NEKH(A3.address), transactions.`value`, transactions.gas_provided, " +
+                                "transactions.gas_used, transactions.gas_price, transactions.nonce, NEKH(transactions.input) " +
+                                "FROM transactions " +
+                                "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
+                                "LEFT JOIN addresses AS A1 ON A1.internal_id = transactions.from_id " +
+                                "LEFT JOIN addresses AS A2 ON A2.internal_id = transactions.to_id " +
+                                "LEFT JOIN addresses AS A3 ON A3.internal_id = transactions.contract_id " +
+                                "WHERE transactions.block_id = ? ORDER BY `index` ASC");
+                // Result is sorted by index in an ascending order
 
-                final ResultSet resultSet = prpstmt.executeQuery();
+                prpstmt.setLong(1, blockInternalId);
 
-                while (resultSet.next()) {
-                    jsonArrayTransactions.put(HandlerCommon.getTransaction(resultSet));
+                ResultSet resultSet = prpstmt.executeQuery();
+
+                while (resultSet.next()) {  // Add txs
+                    JSONObject jsonObjectTx = new JSONObject();
+                    HandlerCommon.writeTx(jsonObjectTx,
+                            resultSet.getLong(1),
+                            resultSet.getLong(2),
+                            resultSet.getLong(3),
+                            resultSet.getInt(4),
+                            resultSet.getString(5),
+                            resultSet.getString(6),
+                            resultSet.getString(7),
+                            resultSet.getString(8),
+                            new BigInteger(resultSet.getBytes(9)),
+                            resultSet.getLong(10),
+                            resultSet.getLong(11),
+                            new BigInteger(resultSet.getBytes(12)),
+                            resultSet.getString(13),
+                            resultSet.getString(14)
+                            );
+                    jsonArrayTransactions.put(jsonObjectTx);
                 }
 
                 prpstmt.close();
-            } else if (detail == BlockRequest.TransactionDetail.HASH_ONLY) {
+
+                return jsonArrayTransactions;
+            } else if (detail == BlockRequest.TransactionDetail.NORMAL) {
+                // Hash only
+
+                final PreparedStatement prpstmt = connection.prepareStatement(
+                        "SELECT transactions.internal_id, blocks.number, transactions.`index`, NEKH(transactions.hash), " +
+                                "NEKH(A1.address), NEKH(A2.address), NEKH(A3.address), transactions.`value` " +
+                                "FROM transactions " +
+                                "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
+                                "LEFT JOIN addresses AS A1 ON A1.internal_id = transactions.from_id " +
+                                "LEFT JOIN addresses AS A2 ON A2.internal_id = transactions.to_id " +
+                                "LEFT JOIN addresses AS A3 ON A3.internal_id = transactions.contract_id " +
+                                "WHERE transactions.block_id = ? ORDER BY `index` ASC");
+
                 final PreparedStatement prpstmt =
                         connection.prepareStatement("SELECT NEKH(hash) FROM transactions WHERE block_id = ? ORDER BY `index` ASC");
-                prpstmt.setString(1, blockInternalId.toString());
+                prpstmt.setLong(1, blockInternalId);
 
                 final ResultSet resultSet = prpstmt.executeQuery();
 
@@ -265,6 +312,8 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
                 }
 
                 prpstmt.close();
+            } else {
+                throw new InvalidRequestException("Invalid transaction detail");
             }
 
             return jsonArrayTransactions;
@@ -297,7 +346,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
         }
 
         enum TransactionDetail {
-            ALL, HASH_ONLY, COUNT, NOT_INCLUDE
+            ALL, NORMAL, COUNT, NOT_INCLUDE
         }
 
         enum UncleDetail {
