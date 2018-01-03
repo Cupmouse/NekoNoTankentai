@@ -10,6 +10,7 @@ import org.web3j.utils.Async;
 public class Web3jManager {
 
     private Web3j web3j;
+    private Service service;
 
     private ConnectionType determineIPC() {
         final String osName = System.getProperty("os.name");
@@ -42,6 +43,7 @@ public class Web3jManager {
         }
 
         this.web3j = Web3j.build(service, pollingInterval, Async.defaultExecutorService());
+        this.service = service;
     }
 
     public Web3j getWeb3j() {
@@ -50,6 +52,10 @@ public class Web3jManager {
         }
 
         return web3j;
+    }
+
+    public Service getService() {
+        return service;
     }
 
     public enum ConnectionType {

@@ -25,7 +25,10 @@ public class BlockNumberEndPoint {
     @OnOpen
     public void onSessionOpen(Session session) {
         sessionQueue.add(session);
-        session.getAsyncRemote().sendText(lastBlockNumber);
+
+        if (lastBlockNumber != null) {
+            session.getAsyncRemote().sendText(lastBlockNumber);
+        }
     }
 
     @OnClose

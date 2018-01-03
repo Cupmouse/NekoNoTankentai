@@ -14,86 +14,53 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import static net.nekonium.explorer.server.handler.HandlerCommon.UNCLE_COLUMNS;
-import static net.nekonium.explorer.server.handler.HandlerCommon.parseUncleJSON;
+import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.UncleRequest> {
 
     @Override
     public UncleRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
-        if (!JSONUtil.hasJSONArray(jsonObject, "content")) {
-            throw new InvalidRequestException("'content' has to be array");
-        }
+        checkContentIsArray(jsonObject);
 
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
-        if (jsonArrayContent.length() < 1) {
-            throw new InvalidRequestException("No parameters found");
-        }
-
-        if (!JSONUtil.hasString(jsonArrayContent, 0)) {
-            throw new InvalidRequestException("'type' has to be string");
-        }
+        checkHasParameter(jsonArrayContent);
+        checkHasString(jsonArrayContent, 0, "type");
 
         final String typeStr = jsonArrayContent.getString(0);
 
         if (typeStr.equals("number_and_index")) {
-            if (jsonArrayContent.length() != 3) {
-                throw new InvalidRequestException("Too much or not enough parameters");
-            }
 
-            if (!JSONUtil.hasString(jsonArrayContent, 1)) {
-                throw new InvalidRequestException("'number' has to be string");
-            }
+            checkParamCount(jsonArrayContent, 3);
 
-            if (!JSONUtil.hasNumber(jsonArrayContent, 2)) {
-                throw new InvalidRequestException("'index' has to be number");
-            }
+            checkHasString(jsonArrayContent, 1, "number");
+            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
 
-            final BigInteger number;
-
-            try {
-                number = new BigInteger(jsonArrayContent.getString(1));
-            } catch (NumberFormatException e) {
-                throw new InvalidRequestException("'number' has to be numeric", e);
-            }
-
-            final int index = jsonArrayContent.getInt(2);
+            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
 
             return new UncleRequest.NumberAndIndex(number, index);
-        } else if (typeStr.equals("number")) {
+        } else if (typeStr.equals("id_and_index")) {
 
-            if (jsonArrayContent.length() != 2) {
-                throw new InvalidRequestException("Too much or not enough parameters");
-            }
+            checkParamCount(jsonArrayContent, 3);
 
-            if (!JSONUtil.hasString(jsonArrayContent, 1)) {
-                throw new InvalidRequestException("'number' has to be string");
-            }
+            checkHasString(jsonArrayContent, 1, "number");
+            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
 
-            final BigInteger number;
-
-            try {
-                number = new BigInteger(jsonArrayContent.getString(1));
-            } catch (NumberFormatException e) {
-                throw new InvalidRequestException("'number' has to be numeric", e);
-            }
+            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
 
             return new UncleRequest.Number(number);
         } else if (typeStr.equals("hash")) {
-            if (jsonArrayContent.length() != 2) {
-                throw new InvalidRequestException("Too much or not enough parameters");
-            }
 
-            if (!JSONUtil.hasString(jsonArrayContent, 1)) {
-                throw new InvalidRequestException("'hash' has to be string");
-            }
+            checkParamCount(jsonArrayContent, 2);
+            checkHasString(jsonArrayContent, 1, "hash");
 
-            if (!FormatValidator.isValidBlockHash(jsonArrayContent.getString(1))) {
+            final String hash = jsonArrayContent.getString(1);
+
+            if (!FormatValidator.isValidBlockHash(hash)) {
                 throw new InvalidRequestException("Invalid block hash");
             }
 
-            return new UncleRequest.Hash(jsonArrayContent.getString(1).substring(2));
+            return new UncleRequest.Hash(hash.substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }

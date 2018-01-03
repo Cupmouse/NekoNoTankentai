@@ -5,7 +5,6 @@ import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
 import net.nekonium.explorer.util.FormatValidator;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.math.BigInteger;
@@ -14,67 +13,71 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
 import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class TransactionRequestHandler implements RequestHandler<TransactionRequestHandler.TransactionRequest> {
 
+    public static final String TRANSACTION_NONCONDITION = "SELECT transactions.internal_id, transactions.block_id, blocks.number, transactions.`index`, NEKH(transactions.hash), " +
+            "NEKH(A1.address), NEKH(A2.address), NEKH(A3.address), transactions.`value`, transactions.gas_provided, " +
+            "transactions.gas_used, transactions.gas_price, transactions.nonce, NEKH(transactions.input) " +
+            "FROM transactions " +
+            "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
+            "LEFT JOIN addresses AS A1 ON A1.internal_id = transactions.from_id " +
+            "LEFT JOIN addresses AS A2 ON A2.internal_id = transactions.to_id " +
+            "LEFT JOIN addresses AS A3 ON A3.internal_id = transactions.contract_id " +
+            "WHERE ";
+
     @Override
     public TransactionRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
-        if (!hasJSONArray(jsonObject, "content")) {
-            throw new InvalidRequestException("'content' has to be array");
-        }
+        checkContentIsArray(jsonObject);
 
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
-        if (jsonArrayContent.length() < 1) {
-            throw new InvalidRequestException("No parameters found");
-        }
+        checkHasParameter(jsonArrayContent);
+        checkHasString(jsonArrayContent, 0, "type");
 
-        if (!hasString(jsonArrayContent, 0)) {
-            throw new InvalidRequestException("'type' has to be string");
-        }
-
-        final String typeStr = jsonArrayContent.getString(0).toLowerCase();
+        final String typeStr = jsonArrayContent.getString(0);
 
         if (typeStr.equals("number_and_index")) {
-            if (jsonArrayContent.length() != 3) {
-                throw new InvalidRequestException("Too much element or not enough parameters");
-            }
-            if (!hasString(jsonArrayContent, 1) && !hasString(jsonArrayContent, 2)) {
-                throw new InvalidRequestException("'number' and 'index' have to be string");
-            }
 
-            final BigInteger number;
-            try {
-                number = new BigInteger(jsonArrayContent.getString(1));
-            } catch (JSONException e) {
-                throw new InvalidRequestException("'number' has to be numeric");
-            }
+            checkParamCount(jsonArrayContent, 3);
 
-            if (!(jsonArrayContent.get(2) instanceof Number)) {
-                throw new InvalidRequestException("'index' has to be numeric");
-            }
+            checkHasString(jsonArrayContent, 1, "number");
+            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
 
-            final int index = jsonArrayContent.getInt(2);
+            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
 
             return new TransactionRequest.NumberAndIndex(number, index);
+        } else if (typeStr.equals("id_and_index")) {
+
+            checkParamCount(jsonArrayContent, 3);
+
+            checkHasString(jsonArrayContent, 1, "internal_id");
+            final BigInteger internalId = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "internal_id");
+
+            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
+
+            return new TransactionRequest.InternalIdAndIndex(internalId, index);
         } else if (typeStr.equals("hash")) {
-            if (jsonArrayContent.length() != 2) {
-                throw new InvalidRequestException("Too much element or not enough parameters");
-            }
-            if (!hasString(jsonArrayContent, 1)) {
-                throw new InvalidRequestException("'hash' has to be string");
-            }
-            if (!FormatValidator.isValidTransactionHash(jsonArrayContent.getString(1))) {
+
+            checkParamCount(jsonArrayContent, 2);
+            checkHasString(jsonArrayContent, 1, "hash");
+
+            final String hash = jsonArrayContent.getString(1);
+
+            if (!FormatValidator.isValidTransactionHash(hash)) {
                 throw new InvalidRequestException("Invalid transaction hash");
             }
 
-            return new TransactionRequest.Hash(jsonArrayContent.getString(1).substring(2));
+            return new TransactionRequest.Hash(hash.substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }
     }
+
+
 
     @Override
     public Object handle(TransactionRequest parameters) throws Exception {
@@ -83,24 +86,62 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         try {
             connection = ExplorerServer.getInstance().getBackend().getDatabaseManager().getConnection();
 
-            final Object transaction;
+            final PreparedStatement prpstmt;
 
             if (parameters instanceof TransactionRequest.NumberAndIndex) {
                 // Number and index
 
-                transaction = HandlerCommon.getTransaction(connection, "blocks.forked = 0 AND blocks.number = ? AND transactions.index = ? LIMIT 1", prpstmt -> {
-                    prpstmt.setString(1, ((TransactionRequest.NumberAndIndex) parameters).number.toString());
-                    prpstmt.setInt(2, ((TransactionRequest.NumberAndIndex) parameters).index);
-                }, false);
-            } else {
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.forked = 0 AND blocks.number = ? AND transactions.index = ? LIMIT 1");
+
+                final TransactionRequest.NumberAndIndex casted = (TransactionRequest.NumberAndIndex) parameters;
+
+                prpstmt.setString(1, casted.number.toString());
+                prpstmt.setInt(2, casted.index);
+            } else if (parameters instanceof TransactionRequest.InternalIdAndIndex) {
+                // Internal id and index, forked block may return
+
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.block_id = ? LIMIT 1");
+
+                final TransactionRequest.InternalIdAndIndex casted = (TransactionRequest.InternalIdAndIndex) parameters;
+
+                prpstmt.setString(1, casted.internalId.toString());
+                prpstmt.setLong(2, casted.index);
+
+            } else if (parameters instanceof TransactionRequest.Hash) {
                 // Hash
 
-                transaction = HandlerCommon.getTransaction(connection, "blocks.forked = 0 AND transaction.hash = UNHEX(?) LIMIT 1", prpstmt -> {
-                    prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
-                }, false);
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.forked = 0 AND transactions.hash = UNHEX(?) LIMIT 1");
+                prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
+
+            } else {
+                throw new InvalidRequestException("Key type unknown");
             }
 
-            return transaction; // If transaction was not found, false returns
+            ResultSet resultSet = prpstmt.executeQuery();   // Execute query
+
+            if (resultSet.next()) {
+                JSONObject jsonObjectTx = new JSONObject();
+                writeTx(jsonObjectTx,
+                        resultSet.getLong(1),
+                        resultSet.getLong(2),
+                        resultSet.getLong(3),
+                        resultSet.getInt(4),
+                        resultSet.getString(5),
+                        resultSet.getString(6),
+                        resultSet.getString(7),
+                        resultSet.getString(8),
+                        new BigInteger(resultSet.getBytes(9)),
+                        resultSet.getLong(10),
+                        resultSet.getLong(11),
+                        new BigInteger(resultSet.getBytes(12)),
+                        resultSet.getString(13),
+                        resultSet.getString(14)
+                );
+
+                return jsonObjectTx;    // Return result
+            } else {
+                return false;   // If a transaction was not found, false returns
+            }
         } finally {
             if (connection != null) {
                 try {
@@ -110,6 +151,47 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
                 }
             }
         }
+    }
+
+    private void writeTx(final JSONObject jsonObject,
+                         final long internalId, final long blockId, final long blockNumber, final int index, final String hash,
+                         final String from, final String to, final String contract, final BigInteger value,
+                         final long gasProvided, final long gasUsed, final BigInteger gasPrice, final String nonce, final String input) {
+        // This method is separated because I can assure every parameters are the type it is supposed to be
+        jsonObject.put("internal_id",   internalId);
+        jsonObject.put("block_id",      blockId);
+        jsonObject.put("block_number",  blockNumber);
+        jsonObject.put("index",         index);
+        jsonObject.put("hash",          hash);
+        jsonObject.put("from",          from);
+
+        TransactionType txType;
+
+        if (to == null) { // to == null means contract creation transaction
+            txType = TransactionType.CONTRACT_CREATION;
+
+            jsonObject.put("contract_address", contract);
+        } else {
+            if (input.equals("0x")) {
+                // Input is empty, this should be normal nuko sending tx
+                txType = TransactionType.SENDING;
+            } else {
+                // Assume contract calling
+                txType = TransactionType.CONTRACT_CALL;
+            }
+            txType = TransactionType.SENDING;
+
+            jsonObject.put("to", to);
+            jsonObject.put("value", value); // Contract calls can also have value to send
+        }
+
+        jsonObject.put("type",           txType.name().toLowerCase());
+
+        jsonObject.put("gas_provided",  gasProvided);
+        jsonObject.put("gas_used",      gasUsed);
+        jsonObject.put("gas_price",     gasPrice);
+        jsonObject.put("nonce",         nonce);
+        jsonObject.put("input",         input);
     }
 
     static class TransactionRequest {
@@ -127,6 +209,16 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             private NumberAndIndex(BigInteger number, int index) {
                 this.number = number;
+                this.index = index;
+            }
+        }
+
+        static class InternalIdAndIndex extends TransactionRequest {
+            private final BigInteger internalId;
+            private final int index;
+
+            private InternalIdAndIndex(BigInteger internalId, int index) {
+                this.internalId = internalId;
                 this.index = index;
             }
         }
