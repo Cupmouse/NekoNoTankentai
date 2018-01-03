@@ -3,8 +3,7 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import net.nekonium.explorer.util.FormatValidator;
-import net.nekonium.explorer.util.JSONUtil;
+import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -17,6 +16,15 @@ import java.sql.SQLException;
 import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.UncleRequest> {
+
+    public static final String SELECT_NOCONDITION = "SELECT " +
+            "uncles_blocks.internal_id, uncles_blocks.`number`, uncles_blocks.`block_id`, uncles_blocks.`index`, " +
+            "NEKH(uncles_blocks.hash), NEKH(blocks.hash), UNIX_TIMESTAMP(uncles_blocks.timestamp), NEKH(addresses.address), " +
+            "uncles_blocks.difficulty, uncles_blocks.gas_limit, uncles_blocks.gas_used, NEKH(uncles_blocks.extra_data), " +
+            "uncles_blocks.nonce, uncles_blocks.size FROM uncle_blocks " +
+            "LEFT JOIN blocks ON blocks.internal_id = uncle_blocks.parent " +
+            "LEFT JOIN addresses ON addresses.internal_id = uncle_blocks.miner " +
+            "WHERE ";
 
     @Override
     public UncleRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
@@ -56,7 +64,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
 
             final String hash = jsonArrayContent.getString(1);
 
-            if (!FormatValidator.isValidBlockHash(hash)) {
+            if (!FormatValidateUtil.isValidBlockHash(hash)) {
                 throw new InvalidRequestException("Invalid block hash");
             }
 
@@ -77,16 +85,16 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
 
             if (parameters instanceof UncleRequest.Hash) {
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE hash = UNHEX(?) LIMIT 1");
+                        SELECT_NOCONDITION + "uncle_blocks.hash = UNHEX(?) LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.Hash) parameters).hash);
             } else if (parameters instanceof UncleRequest.Number) {
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE number = ? LIMIT 1");
+                        SELECT_NOCONDITION + "uncle_blocks.number = ? LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.Number) parameters).number.toString());
             } else {
                 /* UncleRequest.NumberAndIndex */
 
-                prpstmt = connection.prepareStatement("SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks " +
+                prpstmt = connection.prepareStatement(SELECT_NOCONDITION +
                         "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE blocks.number = ?) AND `index` = ? LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.NumberAndIndex) parameters).number.toString());
                 prpstmt.setInt(2, ((UncleRequest.NumberAndIndex) parameters).index);

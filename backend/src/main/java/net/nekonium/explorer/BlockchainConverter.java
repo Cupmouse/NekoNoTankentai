@@ -3,6 +3,7 @@ package net.nekonium.explorer;
 import net.nekonium.explorer.util.IllegalBlockchainStateException;
 import net.nekonium.explorer.util.IllegalDatabaseStateException;
 import net.nekonium.explorer.util.NonNullPair;
+import net.nekonium.explorer.web3jexpand.Web3jManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;

@@ -2,24 +2,14 @@ package net.nekonium.explorer.server.handler;
 
 import net.nekonium.explorer.server.InvalidRequestException;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.math.BigInteger;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
-import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
-import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 class HandlerCommon {
-
-    public static final String UNCLE_COLUMNS = "internal_id, number, NEKH(hash), NEKH(parent_hash), UNIX_TIMESTAMP(timestamp), NEKH(miner), " +
-            "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, NEKH(sha3_uncles), size";
-
 
     private HandlerCommon() {
     }
@@ -95,6 +85,26 @@ class HandlerCommon {
         jsonObjectUncle.put("sha3_uncles"   , resultSet.getString(++n));
         jsonObjectUncle.put("size"          , resultSet.getInt(++n));
         return jsonObjectUncle;
+    }
+
+    public static boolean hasTyped(final JSONArray jsonArray, final int index, final Class<?> type) throws JSONException {
+        return type.isInstance(jsonArray.get(index));
+    }
+
+    public static boolean hasString(final JSONArray jsonArray, final int index) throws JSONException {
+        return jsonArray.get(index) instanceof String;
+    }
+
+    public static boolean hasNumber(final JSONArray jsonArray, final int index) throws JSONException {
+        return jsonArray.get(index) instanceof Number;
+    }
+
+    public static boolean hasJSONObject(final JSONObject jsonObject, final String key) throws JSONException {
+        return jsonObject.get(key) instanceof JSONObject;
+    }
+
+    public static boolean hasJSONArray(final JSONObject jsonObject, final String key) throws JSONException {
+        return jsonObject.get(key) instanceof JSONArray;
     }
 
     enum TransactionType {

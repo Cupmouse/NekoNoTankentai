@@ -1,4 +1,4 @@
-package net.nekonium.explorer;
+package net.nekonium.explorer.web3jexpand;
 
 import org.web3j.protocol.Service;
 import org.web3j.protocol.Web3j;

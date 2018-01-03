@@ -1,6 +1,5 @@
-import net.nekonium.explorer.Web3jManager;
+import net.nekonium.explorer.web3jexpand.Web3jManager;
 import org.web3j.protocol.core.DefaultBlockParameter;
-import org.web3j.protocol.core.DefaultBlockParameterName;
 
 import java.io.IOException;
 import java.math.BigInteger;
