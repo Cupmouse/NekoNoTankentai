@@ -3,6 +3,7 @@ package net.nekonium.explorer;
 import net.nekonium.explorer.util.IllegalBlockchainStateException;
 import net.nekonium.explorer.util.IllegalDatabaseStateException;
 import net.nekonium.explorer.util.NonNullPair;
+import net.nekonium.explorer.web3jexpand.Web3jManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.DefaultBlockParameter;
@@ -564,6 +565,7 @@ public class BlockchainConverter implements Runnable {
 
             /* Get parent's block entry from the database */
             final PreparedStatement prpstmt = connection.prepareStatement("SELECT blocks.internal_id, NEKH(b2.hash) FROM blocks LEFT JOIN blocks AS b2 ON blocks.parent = b2.internal_id WHERE blocks.number = ? AND blocks.hash = UNHEX(?)");
+            // Result could contain blocks marked as forked but by reorging it might be revived
             prpstmt.setString(1, parentBlockNumber.toString());
             prpstmt.setString(2, expectedParentBlockHash.substring(2));
 
@@ -604,10 +606,11 @@ public class BlockchainConverter implements Runnable {
 
                     prpstmt.close();    // Don't forget to close the statement
 
-                    // This statement marks "forked" all non main-chain blocks
-                    final PreparedStatement prpstmt2 = connection.prepareStatement("UPDATE blocks SET forked = 1 WHERE number = ? AND internal_id != ? AND forked = 0");
-                    prpstmt2.setString(1, parentBlockNumber.toString());
-                    prpstmt2.setString(2, internalId);
+                    // This statement marks "forked" all non main-chain blocks and remark (!! important!! remarking happens)
+                    final PreparedStatement prpstmt2 = connection.prepareStatement("UPDATE blocks SET forked = (hash != UNHEX(?)) WHERE number = ? AND internal_id != ?");
+                    prpstmt2.setString(1, expectedParentBlockHash.substring(2));
+                    prpstmt2.setString(2, parentBlockNumber.toString());
+                    prpstmt2.setString(3, internalId);
 
                     affectedRow = prpstmt2.executeUpdate(); // Execute update statement but no committing
 

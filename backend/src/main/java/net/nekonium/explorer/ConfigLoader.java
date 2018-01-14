@@ -1,6 +1,7 @@
 package net.nekonium.explorer;
 
 import net.nekonium.explorer.util.UnconfiguredPropertyException;
+import net.nekonium.explorer.web3jexpand.Web3jManager;
 
 import java.io.File;
 import java.io.FileInputStream;

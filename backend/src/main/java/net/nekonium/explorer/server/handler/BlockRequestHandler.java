@@ -3,7 +3,7 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import net.nekonium.explorer.util.FormatValidator;
+import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -14,7 +14,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import static net.nekonium.explorer.server.handler.HandlerCommon.*;
-import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.BlockRequest> {
 
@@ -40,7 +39,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             final String hash = jsonArrayContent.getString(1);
 
-            if (!FormatValidator.isValidBlockHash(hash)) {    // Check if hash is valid
+            if (!FormatValidateUtil.isValidBlockHash(hash)) {    // Check if hash is valid
                 throw new InvalidRequestException("Block hash is invalid");
             }
 

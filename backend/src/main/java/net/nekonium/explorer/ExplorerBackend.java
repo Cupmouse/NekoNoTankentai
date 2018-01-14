@@ -1,6 +1,7 @@
 package net.nekonium.explorer;
 
 import net.nekonium.explorer.server.ExplorerServer;
+import net.nekonium.explorer.web3jexpand.Web3jManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

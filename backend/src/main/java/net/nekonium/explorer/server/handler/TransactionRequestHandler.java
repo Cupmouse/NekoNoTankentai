@@ -3,7 +3,7 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import net.nekonium.explorer.util.FormatValidator;
+import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -14,8 +14,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import static net.nekonium.explorer.server.handler.HandlerCommon.*;
-import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
-import static net.nekonium.explorer.util.JSONUtil.hasString;
 
 public class TransactionRequestHandler implements RequestHandler<TransactionRequestHandler.TransactionRequest> {
 
@@ -67,7 +65,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final String hash = jsonArrayContent.getString(1);
 
-            if (!FormatValidator.isValidTransactionHash(hash)) {
+            if (!FormatValidateUtil.isValidTransactionHash(hash)) {
                 throw new InvalidRequestException("Invalid transaction hash");
             }
 
