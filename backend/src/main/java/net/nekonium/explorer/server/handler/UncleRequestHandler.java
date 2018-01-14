@@ -3,8 +3,7 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import net.nekonium.explorer.util.FormatValidator;
-import net.nekonium.explorer.util.JSONUtil;
+import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -56,7 +55,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
 
             final String hash = jsonArrayContent.getString(1);
 
-            if (!FormatValidator.isValidBlockHash(hash)) {
+            if (!FormatValidateUtil.isValidBlockHash(hash)) {
                 throw new InvalidRequestException("Invalid block hash");
             }
 

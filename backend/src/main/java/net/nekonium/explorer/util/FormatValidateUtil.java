@@ -2,11 +2,11 @@ package net.nekonium.explorer.util;
 
 import java.util.regex.Pattern;
 
-public class FormatValidator {
+public class FormatValidateUtil {
 
     public static final Pattern HEX_32BYTES = Pattern.compile("^0x[A-Fa-f0-9]{64}$");
 
-    private FormatValidator() {
+    private FormatValidateUtil() {
     }
 
     public static boolean isValidTransactionHash(String hash) {
