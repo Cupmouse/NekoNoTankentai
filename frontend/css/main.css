@@ -127,12 +127,22 @@ h1 {
     font-weight: bold;
 }
 
+.pagination {
+    text-align: center;
+}
+
+.pagination-selected {
+    text-decoration-line: underline;
+    background-color: #71c5df;
+}
+
 /*
 Block list view
  */
 
 #blocklist-table {
     width: 100%;
+    margin: 0.5em 0;
     overflow: scroll;
 }
 
