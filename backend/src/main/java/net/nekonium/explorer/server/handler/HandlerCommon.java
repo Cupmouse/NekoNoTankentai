@@ -12,9 +12,6 @@ import java.sql.SQLException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static net.nekonium.explorer.util.JSONUtil.hasJSONArray;
-import static net.nekonium.explorer.util.JSONUtil.hasString;
-
 class HandlerCommon {
 
     public static final String UNCLE_COLUMNS = "internal_id, number, NEKH(hash), NEKH(parent_hash), UNIX_TIMESTAMP(timestamp), NEKH(miner), " +
@@ -25,7 +22,7 @@ class HandlerCommon {
     }
 
     static void checkContentIsArray(JSONObject jsonObject) throws InvalidRequestException {
-        if (!hasJSONArray(jsonObject, "content")) {
+        if (!(jsonObject.get("content") instanceof JSONArray)) {
             throw new InvalidRequestException("'content' has to be array");
         }
     }
@@ -43,7 +40,7 @@ class HandlerCommon {
     }
 
     static void checkHasString(JSONArray jsonArrayContent, int index, String name) throws InvalidRequestException {
-        if (!hasString(jsonArrayContent, index)) {
+        if (!(jsonArrayContent.get(index) instanceof String)) {
             throw new InvalidRequestException("'" + name + "' have to be string");
         }
     }
