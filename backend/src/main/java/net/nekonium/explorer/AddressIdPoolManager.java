@@ -91,7 +91,7 @@ public class AddressIdPoolManager {
 
             /* Insert an address into the database */
 
-            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO addresses VALUES (NULL, UNHEX(?) ,?)", RETURN_GENERATED_KEYS);
+            final PreparedStatement prpstmti = connection.prepareStatement("INSERT INTO addresses VALUES (NULL, UNHEX(?) ,?, NULL, NULL)", RETURN_GENERATED_KEYS);
             prpstmti.setString(1, prefixedAddress.substring(2));
             prpstmti.setString(2, addressType.name());
             prpstmti.executeUpdate();

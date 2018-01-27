@@ -3,7 +3,6 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
-import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -37,11 +36,7 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
         if (typeStr.equals("hash")) {
 
-            final String hash = jsonArrayContent.getString(1);
-
-            if (!FormatValidateUtil.isValidBlockHash(hash)) {    // Check if hash is valid
-                throw new InvalidRequestException("Block hash is invalid");
-            }
+            final String hash = getBlockHash(jsonArrayContent, 1, "hash");
 
             return new BlockRequest.Hash(hash.substring(2));          // Block hash
         } else if (typeStr.equals("number")) {
@@ -124,11 +119,6 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             prpstmt.close();
 
-            /* Get transactions */
-
-            final Object transactions = getTransactions(connection, blockInternalId);
-            jsonObjectContents.put("transactions", transactions);
-
             /* Get uncle blocks */
 
             final Object uncleBlocks = getUncleBlocks(connection, blockInternalId);
@@ -186,64 +176,6 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
         prpstmt.close();
 
         return jsonArrayUncles;
-    }
-
-    private JSONArray getTransactions(Connection connection, long blockInternalId) throws SQLException, InvalidRequestException {
-        final JSONArray jsonArrayTransactions = new JSONArray();    // Initialize json array
-
-        final PreparedStatement prpstmt = connection.prepareStatement(
-                "SELECT transactions.internal_id, NEKH(transactions.hash), " +
-                        "NEKH(A1.address), NEKH(A2.address), NEKH(A3.address), transactions.`value`, input = 0 " +
-                        "FROM transactions " +
-                        "LEFT JOIN addresses AS A1 ON A1.internal_id = transactions.from_id " +
-                        "LEFT JOIN addresses AS A2 ON A2.internal_id = transactions.to_id " +
-                        "LEFT JOIN addresses AS A3 ON A3.internal_id = transactions.contract_id " +
-                        "WHERE transactions.block_id = ? ORDER BY `index` ASC");
-        // Result is sorted by index in an ascending order
-
-        prpstmt.setLong(1, blockInternalId);
-
-        ResultSet resultSet = prpstmt.executeQuery();
-
-        while (resultSet.next()) {  // Add txs
-            JSONObject jsonObjectTx = new JSONObject();
-
-            final String to = resultSet.getString(4);
-            final String contract = resultSet.getString(5);
-            final boolean emptyInput = resultSet.getBoolean(7);
-            final String target;
-            final String txType;
-
-            if (to != null) {
-                target = to;
-
-                if (emptyInput) {
-                    // Consider this tx as a normal sending
-                    txType = "s";
-                } else {
-                    // Contract execution
-                    txType = "ce";
-                }
-            } else if (contract != null) {
-                target = contract;
-                txType = "cc";
-            } else {
-                throw new InvalidRequestException("Unknown transaction type");
-            }
-
-            jsonObjectTx.put("type", txType);
-            jsonObjectTx.put("internal_id", resultSet.getLong(1));
-            jsonObjectTx.put("hash", resultSet.getString(2));
-            jsonObjectTx.put("from", resultSet.getString(3));
-            jsonObjectTx.put("target", target);
-            jsonObjectTx.put("value", new BigInteger(resultSet.getBytes(6)));
-
-            jsonArrayTransactions.put(jsonObjectTx);
-        }
-
-        prpstmt.close();
-
-        return jsonArrayTransactions;
     }
 
     static class BlockRequest {

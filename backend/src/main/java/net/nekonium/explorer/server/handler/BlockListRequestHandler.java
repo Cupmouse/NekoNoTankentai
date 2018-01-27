@@ -22,9 +22,7 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
         checkHasParameter(jsonArrayContent);
-        checkHasString(jsonArrayContent, 0, "type");
-
-        final String typeStr = jsonArrayContent.getString(0);
+        final String typeStr = getString(jsonArrayContent, 0, "type");
 
         if (typeStr.equals("page")) {
             checkParamCount(jsonArrayContent, 2);
@@ -59,6 +57,7 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
             final Statement statement = connection.createStatement();
 
             final ResultSet resultSet1 = statement.executeQuery("SELECT COUNT(*) FROM blocks");
+            resultSet1.next();
             final long count = resultSet1.getLong(1);
 
             statement.close();
@@ -89,12 +88,12 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
             while (resultSet2.next()) {
                 final JSONArray jsonArrayBlock = new JSONArray();
 
-                jsonArrayBlock.put(new BigInteger(resultSet2.getString(1))); // Block Number
-                jsonArrayBlock.put(resultSet2.getString(2));                 // Hash
-                jsonArrayBlock.put(resultSet2.getString(3));                 // Miner address
-                jsonArrayBlock.put(resultSet2.getInt(4));                    // Transaction count
-                jsonArrayBlock.put(resultSet2.getInt(5));                    // Uncle block count
-                jsonArrayBlock.put(resultSet2.getBoolean(6));                // Is forked
+                jsonArrayBlock.put(resultSet2.getString(1));                // Block Number
+                jsonArrayBlock.put(resultSet2.getString(2));                // Hash
+                jsonArrayBlock.put(resultSet2.getString(3));                // Miner address
+                jsonArrayBlock.put(resultSet2.getInt(4));                   // Transaction count
+                jsonArrayBlock.put(resultSet2.getInt(5));                   // Uncle block count
+                jsonArrayBlock.put(resultSet2.getBoolean(6));               // Is forked
 
                 jsonArrayBlocks.put(jsonArrayBlock);
             }
@@ -120,7 +119,7 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
 
         static class Page extends BlockListRequest {
 
-            private int pageNumber;
+            private final int pageNumber;
 
             private Page(int pageNumber) {
                 this.pageNumber = pageNumber;

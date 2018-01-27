@@ -60,11 +60,13 @@ public class ExplorerServer {
 
         RequestEndPoint.initQueryExecutor(); // Initialize RequestEndPoint's query executor before starting a server
         /* Registering handlers for RequestEndPoint */
-        RequestEndPoint.registerHandler("search", new SearchRequestHandler());
-        RequestEndPoint.registerHandler("block", new BlockRequestHandler());
-        RequestEndPoint.registerHandler("block-list", new BlockListRequestHandler());
-        RequestEndPoint.registerHandler("transaction", new TransactionRequestHandler());
-        RequestEndPoint.registerHandler("uncle", new UncleRequestHandler());
+        RequestEndPoint.registerHandler("search",           new SearchRequestHandler());
+        RequestEndPoint.registerHandler("block",            new BlockRequestHandler());
+        RequestEndPoint.registerHandler("block-list",       new BlockListRequestHandler());
+        RequestEndPoint.registerHandler("transaction",      new TransactionRequestHandler());
+        RequestEndPoint.registerHandler("transaction-list", new TransactionListRequestHandler());
+        RequestEndPoint.registerHandler("uncle",            new UncleRequestHandler());
+        RequestEndPoint.registerHandler("address",          new AddressRequestHandler());
 
         this.httpServer.start();    // Start a server
 

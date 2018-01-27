@@ -34,16 +34,13 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
         checkHasParameter(jsonArrayContent);
-        checkHasString(jsonArrayContent, 0, "type");
-
-        final String typeStr = jsonArrayContent.getString(0);
+        final String typeStr = getString(jsonArrayContent, 0, "type");
 
         if (typeStr.equals("number_and_index")) {
 
             checkParamCount(jsonArrayContent, 3);
 
-            checkHasString(jsonArrayContent, 1, "number");
-            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
+            final BigInteger number = getNonNegativeBigInteger(jsonArrayContent, 1, "number");
 
             final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
 
@@ -172,12 +169,12 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         } else {
             if (input.equals("0x")) {
                 // Input is empty, this should be normal nuko sending tx
-                txType = TransactionType.SENDING;
+                txType = TransactionType.SEND;
             } else {
                 // Assume contract calling
                 txType = TransactionType.CONTRACT_CALL;
             }
-            txType = TransactionType.SENDING;
+            txType = TransactionType.SEND;
 
             jsonObject.put("to", to);
             jsonObject.put("value", value); // Contract calls can also have value to send

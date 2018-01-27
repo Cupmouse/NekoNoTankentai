@@ -19,17 +19,19 @@ DELIMITER ;
 
 
 
-
 CREATE TABLE `addresses` (
   `internal_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   `address` BINARY(20) NOT NULL,
   `type` ENUM('NORMAL','CONTRACT') NOT NULL,
+  `alias` VARCHAR(30) NULL DEFAULT NULL,
+  `description` VARCHAR(500) NULL DEFAULT NULL,
   PRIMARY KEY (`internal_id`),
   UNIQUE INDEX `address` (`address`)
 )
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB
 ;
+
 
 
 

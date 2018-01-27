@@ -1,16 +1,14 @@
 package net.nekonium.explorer.server.handler;
 
 import net.nekonium.explorer.server.InvalidRequestException;
+import net.nekonium.explorer.util.FormatValidateUtil;
+import net.nekonium.explorer.util.NonNullPair;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.math.BigInteger;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 class HandlerCommon {
 
@@ -33,16 +31,52 @@ class HandlerCommon {
         }
     }
 
+    static void checkParamCountAtLeast(JSONArray jsonArray, int count) throws InvalidRequestException {
+        if (jsonArray.length() < count) {
+            throw new InvalidRequestException("At least " + count + " parameters are expected");
+        }
+    }
+
     static void checkParamCount(JSONArray jsonArrayContent, int count) throws InvalidRequestException {
         if (jsonArrayContent.length() != count) {
             throw new InvalidRequestException("Too much element or not enough parameters (" + count + " expected)");
         }
     }
 
+    static String getBlockHash(JSONArray jsonArray, int index, String name) throws InvalidRequestException {
+        final String str = getString(jsonArray, index, name);// First, it needs to be string
+
+        if (!FormatValidateUtil.isValidBlockHash(str)) {
+            throw new InvalidRequestException("'" + name + "' has invalid block hash");
+        }
+
+        return str;
+    }
+
+    static String getAddressHash(JSONArray jsonArray, int index, String name) throws InvalidRequestException {
+        final String str = getString(jsonArray, index, name);
+
+        if (!FormatValidateUtil.isValidAddressHash(str)) {
+            throw new InvalidRequestException("'" + name + "' has invalid address hash");
+        }
+
+        return str;
+    }
+
     static void checkHasString(JSONArray jsonArrayContent, int index, String name) throws InvalidRequestException {
         if (!(jsonArrayContent.get(index) instanceof String)) {
             throw new InvalidRequestException("'" + name + "' have to be string");
         }
+    }
+
+    static String getString(JSONArray jsonArray, int index, String name) throws InvalidRequestException {
+        final Object o = jsonArray.get(index);
+
+        if (!(o instanceof String)) {
+            throw new InvalidRequestException("'" + name + "' have to be string");
+        }
+
+        return (String) o;
     }
 
     static BigInteger parseNonNegativeBigInteger(String str, String name) throws InvalidRequestException {
@@ -58,6 +92,12 @@ class HandlerCommon {
             throw new InvalidRequestException("'" + name + "' cannot be negative");
         }
         return bigInteger;
+    }
+
+    static BigInteger getNonNegativeBigInteger(JSONArray jsonArray, int count, String name) throws InvalidRequestException {
+        checkHasString(jsonArray, count, name);
+
+        return parseNonNegativeBigInteger(jsonArray.getString(count), name);
     }
 
     static int parseNonNegativeInt(Object o, String name) throws InvalidRequestException {
@@ -94,7 +134,31 @@ class HandlerCommon {
         return jsonObjectUncle;
     }
 
+    static NonNullPair<TransactionType, String> determineTxTypeAndTargetAddress(String toAddress, String contractAddress, boolean emptyInput) throws InvalidRequestException {
+        final TransactionType txType;
+        final String targetAddress;
+
+        if (toAddress != null) {
+            targetAddress = toAddress;
+
+            if (emptyInput) {
+                // Consider this tx as a normal sending
+                txType = TransactionType.SEND;
+            } else {
+                // Contract execution
+                txType = TransactionType.CONTRACT_CALL;
+            }
+        } else if (contractAddress != null) {
+            targetAddress = contractAddress;
+            txType = TransactionType.CONTRACT_CREATION;
+        } else {
+            throw new InvalidRequestException("Unknown transaction type");
+        }
+
+        return new NonNullPair<>(txType, targetAddress);
+    }
+
     enum TransactionType {
-        SENDING, CONTRACT_CREATION, CONTRACT_CALL
+        SEND, CONTRACT_CREATION, CONTRACT_CALL
     }
 }
