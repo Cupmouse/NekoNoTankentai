@@ -6,7 +6,6 @@ import net.nekonium.explorer.server.RequestHandler;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.math.BigInteger;
 import java.sql.*;
 
 import static net.nekonium.explorer.server.handler.HandlerCommon.*;
@@ -42,10 +41,6 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
     @Override
     public Object handle(BlockListRequest parameters) throws Exception {
         final JSONArray jsonArray = new JSONArray();
-        final JSONArray jsonArrayBlocks = new JSONArray();
-
-        final int targetPageNum;    // Target page number
-        final int lastPageNum;      // Last page number
 
         Connection connection = null;
 
@@ -54,15 +49,8 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
 
             // Get last page number from database
 
-            final Statement statement = connection.createStatement();
-
-            final ResultSet resultSet1 = statement.executeQuery("SELECT COUNT(*) FROM blocks");
-            resultSet1.next();
-            final long count = resultSet1.getLong(1);
-
-            statement.close();
-
-            lastPageNum = (int) ((count - 1) / ELEMENT_IN_PAGE + 1);
+            final int lastPageNum = getLastPageNum(connection);      // Last page number
+            final int targetPageNum;
 
             if (parameters instanceof BlockListRequest.Page) {
                 targetPageNum = ((BlockListRequest.Page) parameters).pageNumber;
@@ -72,33 +60,12 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
                 throw new InvalidRequestException("Invalid parameter type");
             }
 
-            final PreparedStatement prpstmt = connection.prepareStatement(
-                        "SELECT blocks.number, NEKH(blocks.hash), NEKH(addresses.address), " +
-                                "(SELECT COUNT(*) FROM transactions WHERE transactions.block_id = blocks.internal_id), " +
-                                "(SELECT COUNT(*) FROM uncle_blocks WHERE uncle_blocks.block_id = blocks.internal_id), " +
-                                "blocks.forked, blocks.internal_id FROM blocks " +
-                                "LEFT JOIN addresses ON addresses.internal_id = blocks.miner_id " +
-                                "WHERE blocks.internal_id BETWEEN ? AND ? " +
-                                "ORDER BY number DESC");
-            prpstmt.setLong(1, ELEMENT_IN_PAGE * targetPageNum);
-            prpstmt.setLong(2, ELEMENT_IN_PAGE * (targetPageNum + 1) - 2);
+            final JSONArray jsonArrayBlocks = querySearch(connection, targetPageNum);
 
-            final ResultSet resultSet2 = prpstmt.executeQuery();
+            jsonArray.put(jsonArrayBlocks);
+            jsonArray.put(lastPageNum);
 
-            while (resultSet2.next()) {
-                final JSONArray jsonArrayBlock = new JSONArray();
-
-                jsonArrayBlock.put(resultSet2.getString(1));                // Block Number
-                jsonArrayBlock.put(resultSet2.getString(2));                // Hash
-                jsonArrayBlock.put(resultSet2.getString(3));                // Miner address
-                jsonArrayBlock.put(resultSet2.getInt(4));                   // Transaction count
-                jsonArrayBlock.put(resultSet2.getInt(5));                   // Uncle block count
-                jsonArrayBlock.put(resultSet2.getBoolean(6));               // Is forked
-
-                jsonArrayBlocks.put(jsonArrayBlock);
-            }
-
-            prpstmt.close();
+            return jsonArray;
         } finally {
             if (connection != null) {
                 try {
@@ -108,9 +75,54 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
                 }
             }
         }
+    }
 
-        jsonArray.put(jsonArrayBlocks);
-        jsonArray.put(lastPageNum);
+    private int getLastPageNum(Connection connection) throws SQLException {
+        int lastPageNum;
+        final Statement statement = connection.createStatement();
+
+        final ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM blocks");
+        resultSet.next();
+        final long count = resultSet.getLong(1);
+
+        resultSet.close();
+        statement.close();
+
+        lastPageNum = (int) ((count - 1) / ELEMENT_IN_PAGE + 1);
+        return lastPageNum;
+    }
+
+    private JSONArray querySearch(Connection connection, int targetPageNum) throws SQLException {
+        final JSONArray jsonArray = new JSONArray();
+
+        final PreparedStatement prpstmt = connection.prepareStatement(
+                "SELECT blocks.number, NEKH(blocks.hash), NEKH(addresses.address), " +
+                        "(SELECT COUNT(*) FROM transactions WHERE transactions.block_id = blocks.internal_id), " +
+                        "(SELECT COUNT(*) FROM uncle_blocks WHERE uncle_blocks.block_id = blocks.internal_id), " +
+                        "blocks.forked, blocks.internal_id FROM blocks " +
+                        "LEFT JOIN addresses ON addresses.internal_id = blocks.miner_id " +
+                        "WHERE blocks.internal_id " +
+                        "ORDER BY number DESC LIMIT ? OFFSET ?");
+        prpstmt.setLong(1, ELEMENT_IN_PAGE);
+        prpstmt.setLong(2, ELEMENT_IN_PAGE * (targetPageNum - 1));
+
+        final ResultSet resultSet = prpstmt.executeQuery();
+
+        while (resultSet.next()) {
+            final JSONArray jsonArrayBlock = new JSONArray();
+
+            jsonArrayBlock.put(resultSet.getString(1));                // Block Number
+            jsonArrayBlock.put(resultSet.getString(2));                // Hash
+            jsonArrayBlock.put(resultSet.getString(3));                // Miner address
+            jsonArrayBlock.put(resultSet.getInt(4));                   // Transaction count
+            jsonArrayBlock.put(resultSet.getInt(5));                   // Uncle block count
+            jsonArrayBlock.put(resultSet.getBoolean(6));               // Is forked
+
+            jsonArray.put(jsonArrayBlock);
+        }
+
+        resultSet.close();
+        prpstmt.close();
 
         return jsonArray;
     }

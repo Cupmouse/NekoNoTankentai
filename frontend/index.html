@@ -11,18 +11,19 @@
     <link rel="icon" type="image/png" href="/adventure_flag_256.png" sizes="256x256">
     <script type="application/javascript" src="/js/Chart.min.js"></script>
     <script type="application/javascript" src="/js/bignumber.min.js"></script>
+    <script type="application/javascript" src="/js/blockies.min.js"></script>
 </head>
 <body>
 <header>
     <div class="pure-g">
         <div class="pure-u-3-4">
-            <a id="title" href="#" onclick="openView(VIEW_HOME)">🚩ねこの探検隊</a>
+            <a id="title" onclick="openView(VIEW_HOME)">🚩ねこの探検隊</a>
 
             <div id="menu" class="pure-menu pure-menu-horizontal">
             <nav>
                 <ul class="pure-menu-list">
                     <li class="pure-menu-item">
-                        <a onclick="openView(new ViewBlock('number', '170317'))" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
+                        <a onclick="openView(new ViewBlockList(1))" class="pure-menu-link"><i class="fa fa-th-large" aria-hidden="true"></i> Blocks</a>
                     </li>
                     <li class="pure-menu-item">
                         <a onclick="loadViewTransactionList()" class="pure-menu-link"><i class="fa fa-exchange" aria-hidden="true"></i> Transactions</a>
@@ -126,6 +127,25 @@
         return new ViewError("Invalid URL");
     };
 
+    const shorten = (string, length, suffix = '...') => {
+        if (string.length < length - suffix.length) {
+            // Shorter than expected
+            return string;
+        }
+
+        return string.substr(0, length - suffix.length).concat(suffix);
+    };
+
+    const genAddressIconCanvas = (address) => {
+        let option = {
+            seed: address,
+            scale: 5,
+            size: 10
+        };
+
+        return blockies.create(option);
+    };
+
     class View {
 
         // Must call loadingEnd in open function
@@ -174,7 +194,12 @@
 
         addWrapper(wrapperDiv) {
             this.wrapperDivs.push(wrapperDiv);  // Add new wrapper
-            wrapperDiv.addEventListener('click', this._buttonClicked);  // Add click event listener to wrapper
+
+            let self = this;
+
+            wrapperDiv.addEventListener('click', function (event) {
+                self._buttonClicked(event);
+            });  // Add click event listener to wrapper
         }
 
         setListener(listener) {
@@ -618,18 +643,23 @@
 
     const BLOCKLIST_PAGINATION_LIMIT = 9;
 
-    class ViewBlockList {
+    class ViewBlockList extends View {
 
         constructor(pageNumber) {
+            super();
             this.pageNumber = pageNumber;
+            this.pag = null;    // Pagination controller
         }
 
         open() {
+            loadingStart();
+
             // Request to the server
 
             let self = this;
 
-            requestService.connectAndRequest("block-list", this.pageNumber, function (response) {
+            // TODO change this using `await`
+            requestService.connectAndRequest("block-list", ['page', this.pageNumber], function (response) {
                 self._requestCallback(response);
                 loadingEnd();
             });
@@ -640,39 +670,46 @@
             let tableContent = this._genTableContent(response[0]);
 
             // Generate pagination
-            let pag = new PaginationControl(BLOCKLIST_PAGINATION_LIMIT, this.pageNumber, response[1]);
+            this.pag = new PaginationControl(BLOCKLIST_PAGINATION_LIMIT, this.pageNumber, response[1]);
 
             // Replace content
             div_contents.innerHTML = `<div class="pure-g">
-            ${genNewPagWrapperHTML('blocklist-pagination-top', pag)}
+            ${genNewPagWrapperHTML('blocklist-pagination-top', this.pag)}
             <div class="pure-u-1">
                 <table id="blocklist-table" class="pure-table pure-table-striped">
                     <thead>
-                    <tr><th>#</th><th>Hash</th><th>Miner</th><th>Tx#</th><th>Uncle#</th><th>Forked?</th><th>Id</th></tr>
+                    <tr><th>#</th><th>Hash</th><th>Miner</th><th>Tx#</th><th>Uncle#</th><th>Forked?</th></tr>
                     </thead>
                     <tbody>
                     ${tableContent}
                     </tbody>
                 </table>
             </div>
-            ${genNewPagWrapperHTML('blocklist-pagination-bottom', pag)}
+            ${genNewPagWrapperHTML('blocklist-pagination-bottom', this.pag)}
         </div>`;
 
-            pag.addWrapper(document.getElementById('blocklist-pagination-top'));
-            pag.addWrapper(document.getElementById('blocklist-pagination-bottom'));
+            this.pag.addWrapper(document.getElementById('blocklist-pagination-top'));
+            this.pag.addWrapper(document.getElementById('blocklist-pagination-bottom'));
 
             let self = this;
-            pag.setListener(function (pageNumber) {
+            this.pag.setListener(function (pageNumber) {
                 self.changePageTo(pageNumber);
             });
         }
 
         changePageTo(pageNumber) {
-            let tableDiv = document.getElementById('blocklist-table');
+            loadingStart();
 
-            // TODO ask for new block list data
+            let tableDiv = document.querySelector('#blocklist-table tbody');
 
-            tableDiv.innerHTML = this._genTableContent();
+            let self = this;
+
+            requestService.connectAndRequest('block-list', ['page', pageNumber], function (response) {
+                tableDiv.innerHTML = self._genTableContent(response[0]);
+                self.pag.update(pageNumber, response[1]);
+
+                loadingEnd();
+            });
         }
 
         _genTableContent(blocks) {
@@ -680,24 +717,37 @@
 
             for (let i in blocks) {
                 let blockelm = blocks[i];
-                let number = blockelm['number'];
-                let hash = blockelm['hash'];
-                let miner = blockelm['miner'];
-                let internalId = blockelm['internal_id'];
-                let txCount = blockelm['tx_count'];
-                let uncleCount = blockelm['uncle_count'];
-                let forked = blockelm['forked'] ? '<i class="fa fa-code-fork" aria-hidden="true"></i> Forked' : 'On-main';
+                let number = blockelm[0];
+                let hash = blockelm[1];
+                let miner = blockelm[2];
+                let txCount = blockelm[3];
+                let uncleCount = blockelm[4];
+                let forked;
 
-                tableContent +=
-                    `<tr>
+                if (blockelm[5]) {
+                    tableContent +=
+                        `<tr>
+                    <td>${number}</td>
+                    <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
+                    <td><a href="/address/${miner}">${shorten(miner, 25)}</a></td>
+                    <td><a href="/block/id/${txCount}">${txCount}</a></td>
+                    <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
+                    <td><i class="fa fa-code-fork" aria-hidden="true"></i></td>
+                    </tr>`;
+                } else {
+                    tableContent +=
+                        `<tr>
                     <td><a href="/block/number/${number}">${number}</a></td>
-                    <td><a href="/block/hash/${hash}">${hash}</a></td>
-                    <td><a href="/address/${miner}">${miner}</a></td>
-                    <td><a href="/block/id/${internalId}">${txCount}</a></td>
-                    <td><a href="/block/id/${internalId}">${uncleCount}</a></td>
-                    <td>${forked}</td>
-                    <td><a href="/block/id/${internalId}">${internalId}</a></td>
-                    </tr>`
+                    <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
+                    <td><a href="/address/${miner}">${shorten(miner, 25)}</a></td>
+                    <td><a href="/block/id/${txCount}">${txCount}</a></td>
+                    <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
+                    <td></td>
+                    </tr>`;
+                }
+
+                // TODO Open with id if forked block, with number if not
+
             }
 
             return tableContent;
@@ -718,16 +768,16 @@
             super();
             this.targetKey = key;
             this.targetValue = value;
-            this.blocklistInner = undefined; // Div element which is is block-list-inner
-            this.blocklist = undefined;      // Div element which id is block-list
+            this.blocklistInner = null; // Div element which is is block-list-inner
+            this.blocklist = null;      // Div element which id is block-list
 
-            this.latestBlockNumber = undefined; // Latest block number known by the client
+            this.latestBlockNumber = null; // Latest block number known by the client
             this.blockListInitialized = false;
-            this.scrollCheckIntervalId = undefined;  // setInterval id of scrollCheck calling
+            this.scrollCheckIntervalId = null;  // setInterval id of scrollCheck calling
             this.scrollAction = false; // Not to do scroll change if events are issued while performing it
             this.elementHeight = -1; // Height of one block list element
-            this.nextTopBlockNum = undefined;    // Next block number will be added to the block list on BEGINNING
-            this.nextBottomBlockNum = undefined; // Next block number will be added to the block list on END including a working block
+            this.nextTopBlockNum = null;    // Next block number will be added to the block list on BEGINNING
+            this.nextBottomBlockNum = null; // Next block number will be added to the block list on END including a working block
         }
 
         open() {
@@ -805,9 +855,9 @@
                             <span class="mini-caption">Internal Id</span><span class="captioned-text">${response['internal_id']}</span>
                         </div>
                     </div>
-                    <h2>${response['transactions'].length} Transaction(s)</h2>
+                    <h2><a onclick="">Transaction(s)</a></h2>
                     <div>
-                        <h2>Citing ${response['uncles'].length} Uncle(s)</h2>
+                        <h2>${response['uncles'].length} Uncle(s)</h2>
 
                         ${uncles_html}
                     </div>
