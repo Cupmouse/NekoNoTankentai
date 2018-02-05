@@ -63,6 +63,10 @@ body {
     -webkit-box-shadow: gray 0 0 3px 1px;;
 }
 
+#contents {
+    color: #565d64;
+}
+
 .text-selectable {
     /* Enable text selection */
     -moz-user-select: text;
@@ -72,19 +76,10 @@ body {
     -webkit-touch-callout: default;
 }
 
-
-/*
- Home view
-  */
-
-.pure-form .input-text-highlight-red {
-    box-shadow: 0px 0px 6px red;
-    border: solid 1px red;
+.word-break-all {
+    word-break: break-all;
 }
 
-.input-text-highlight-green {
-
-}
 
 /*
 View Common
@@ -136,6 +131,41 @@ h1 {
     background-color: #71c5df;
 }
 
+.box-highlighted {
+    border-radius: 0.1em;
+    padding: 0.2em;
+}
+
+.bh-red {
+    background-color: #fd7460;
+    /*border: #fc482e solid 0.1em;*/
+    color: white;
+    text-shadow: -0.05em -0.05em 1px rgba(200, 200, 200, 0.5);
+}
+
+.bh-yellow {
+    background-color: #f9c32c;
+    /*border: #ebaf07 solid 0.1em;*/
+    color: black;
+}
+
+.bh-green {
+    background-color: #c4e82c;
+    color: black;
+}
+
+/*
+ Home view
+  */
+
+.pure-form .input-text-highlight-red {
+    box-shadow: 0px 0px 6px red;
+    border: solid 1px red;
+}
+
+.input-text-highlight-green {
+
+}
 /*
 Block list view
  */
@@ -210,4 +240,45 @@ Blocks View
 .block-about {
     margin-left: 1.5em;
     display: inline-block;
+}
+
+/*
+ Address View
+ */
+
+#address-wrapper {
+    display: block;
+    text-align: center;
+}
+
+#address-icon-wrapper {
+    display: inline-block;
+    vertical-align: top;
+}
+
+#address-icon {
+    border-radius: 0.2em;
+}
+
+#address-info {
+    display: inline-block;
+    text-align: left;
+}
+
+#address-hash {
+    display: inline-block;
+    word-break: break-all;
+}
+
+.reviewed-admin-icon {
+    color: #26b115;
+    margin-left: 0.1em;
+}
+
+.address-tag {
+    display: inline-block;
+    border-radius: 0.25em;
+    background-color: #E6E6E6;
+    padding: 0.2em 0.5em;
+    margin: 0.2em 0;
 }
