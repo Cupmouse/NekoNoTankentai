@@ -93,6 +93,10 @@
         return REGEX_HASH64.test(hash);
     };
 
+    const isAddressHash = (hash) => {
+        return REGEX_ADDRESS.test(hash);
+    };
+
     const isNonNegativeInt = (str) => {
         return REGEX_NON_NEGATIVE_INT.test(str);
     };
@@ -607,12 +611,11 @@
 
         if (splint[0] === 'block' && splint.length === 3) {
             if (splint[1] === 'hash') {
-                if (isBlockHash(splint[2])) {
-                    return new ViewBlock('hash', splint[2]);
-
-                } else {
-                    return new ViewError("Invalid block hash");
+                if (!isBlockHash(splint[2])) {
+                    return new ViewError('Invalid block hash');
                 }
+
+                return new ViewBlock('hash', splint[2]);
             } else if (splint[1] === 'number') {
                 let fl = parseFloat(splint[2]);
 
@@ -622,23 +625,33 @@
                     return new ViewBlock('number', it.toString(10));
 
                 } else {
-                    return new ViewError("Non integer value entered");
+                    return new ViewError('Non integer value entered');
                 }
             }
 
-            return new ViewError("Block selection type unknown");
+            return new ViewError('Block selection type unknown');
         } else if (splint[0] === 'tx' && splint.length === 3) {
             if (splint[1] === 'hash') {
                 if (isTxHash(splint[2])) {
                     // TODO
                 }
             }
+        } else if (splint[0] === 'address' && splint.length === 3) {
+            if (splint[1] === 'hash') {
+                if (!isAddressHash(splint[2])) {
+                    throw new ViewError('Invalid address hash');
+                }
+
+                return new ViewAddress('hash', splint[2]);
+            }
+
+            throw new ViewError('Address selection type unknown')
         } else if (splint[0] === 'blocks' && splint.length === 1) {
             return new ViewBlockList(1);
         } else if (splint[0] === 'transactions' && splint.length === 1) {
         }
 
-        return new ViewError("Invalid URL");
+        return new ViewError('Invalid URL');
     };
 
     const transitView = (path, makeHistory) => {
@@ -812,7 +825,7 @@
                         `<tr>
                     <td>${number}</td>
                     <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
-                    <td><a href="/address/${miner}">${shorten(miner, 25)}</a></td>
+                    <td><a href="/address/hash/${miner}">${shorten(miner, 25)}</a></td>
                     <td><a href="/block/id/${txCount}">${txCount}</a></td>
                     <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
                     <td><i class="fa fa-code-fork" aria-hidden="true"></i></td>
@@ -822,7 +835,7 @@
                         `<tr>
                     <td><a href="/block/number/${number}">${number}</a></td>
                     <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
-                    <td><a href="/address/${miner}">${shorten(miner, 25)}</a></td>
+                    <td><a href="/address/hash/${miner}">${shorten(miner, 25)}</a></td>
                     <td><a href="/block/id/${txCount}">${txCount}</a></td>
                     <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
                     <td></td>
@@ -1108,15 +1121,101 @@
 
     /* Address View Declaration Start */
 
-    function loadViewAddress($address) {
-        loadingStart();
+    const ADDRESS_TYPE = {
+        NORMAL: 'NORMAL',
+        CONTRACT: 'CONTRACT'
+    };
 
-        div_contents.innerHTML =
-            `<div class="pure-u-1">
-    <h1>Address ${address}</h1>
-</div>`;
+    class ViewAddress extends View {
 
-        loadingEnd();
+        constructor(key, value) {
+            super();
+            this.targetKey = key;
+            this.targetValue = value;
+        }
+
+        getTitle() {
+            return `Address ${this.targetValue}`;
+        }
+
+        open() {
+            requestService.connectAndRequest('address', [this.targetKey, this.targetValue], (content) => {
+                if (content === false) {
+                    // Address was not recorded on the server
+                    div_contents.innerHTML = '<h1>Address did not found</h1>';
+                    loadingEnd();
+                    return;
+                }
+
+                // Human readability and something
+                const internalId = content[0];
+                const addr_hash = content[1];
+                const addr_type = content[2];
+                const alias = content[3];
+                const description = content[4];
+                const first_appear_block = content[5];
+                const first_appear_ts = content[6];
+                const last_appear_block = content[7];
+                const last_appear_ts = content[8];
+
+                // Mouse over hint for 'address type'
+                let addr_type_title;
+
+                if (addr_type === ADDRESS_TYPE.NORMAL) {
+                    addr_type_title = 'Normal addresses are the wallets which have a public and private key pair';
+                } else if (addr_type === ADDRESS_TYPE.CONTRACT) {
+                    addr_type_title = 'Contract addresses are individual addresses generated for each contract when it is created';
+                } else throw new Error('Unknown address type');
+
+                // If alias was not registered (null) then remove section
+                let alias_HTML;
+
+                if (alias === null) {
+                    alias_HTML = '';
+                } else {
+                    alias_HTML = `<h2 title="Registered alias of this address">${alias}<i class="fa fa-check-circle reviewed-admin-icon" aria-hidden="true" title="Reviewed by admins"></i></h2>`;
+                }
+
+                // Same here
+                let description_HTML;
+
+                if (description === null) {
+                    description_HTML = '';
+                } else {
+                    description_HTML = `<p title="Registered description for this address">${description}</p>`;
+                }
+
+                // Write it to content div
+                div_contents.innerHTML = `<div id="address-wrapper">
+            <canvas id="address-icon" title="This address's portrait icon (nealy unique)"></canvas>
+            <div id="address-info">
+                <h1><span class="box-highlighted bh-green" title="${addr_type_title}">${addr_type}</span> Address <span id="address-hash">${addr_hash}</span></h1>
+                ${alias_HTML}
+                ${description_HTML}
+                <p id="address-tags">Tags: <span class="address-tag">?</span></p>
+                <h2><a href="/address/${this.targetKey}/${this.targetValue}/txs">? transaction(s) involved</a></h2>
+                <h2><a href="/address/${this.targetKey}/${this.targetValue}/mined">? block(s) mined</a></h2>
+                <h2>Last activity on <a href="/block/number/${last_appear_block}" title="Block #${last_appear_block}"> ${formatUTCUnixEpoch(last_appear_ts)}</a> (10 seconds ago)</h2>
+                <h2>First appearance on <a href="/block/number/${first_appear_block}" title="Block #${first_appear_block}"> ${formatUTCUnixEpoch(first_appear_ts)}</a> (3 months ago)</h2>
+            </div>
+        </div>`;
+
+                // Render address icon
+                const option = {
+                    seed:addr_hash,
+                    size: 8,
+                    scale: 16
+                };
+                blockies.render(option, document.getElementById('address-icon'));
+
+                // Add anchor event
+                addAllAnchorsEvent(div_contents);
+
+                loadingEnd();
+            });
+
+
+        }
     }
 
     /* Address View Declaration End */

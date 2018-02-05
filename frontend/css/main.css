@@ -251,12 +251,9 @@ Blocks View
     text-align: center;
 }
 
-#address-icon-wrapper {
+#address-icon {
     display: inline-block;
     vertical-align: top;
-}
-
-#address-icon {
     border-radius: 0.2em;
 }
 

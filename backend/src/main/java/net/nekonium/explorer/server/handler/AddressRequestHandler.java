@@ -33,7 +33,7 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
 
             String hash = getString(jsonArrayContent, 1, "address_hash");
 
-            return new AddressRequestHandler.AddressRequest.Hash(hash);
+            return new AddressRequestHandler.AddressRequest.Hash(hash.substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }
@@ -49,64 +49,74 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
 
                 // Gather common information
                 final PreparedStatement prpstmt1 = connection.prepareStatement(
-                        "SELECT internal_id, address, type, alias, description " +
+                        "SELECT internal_id, NEKH(address), type, alias, description " +
                                 "FROM addresses WHERE address = UNHEX(?)");
                 prpstmt1.setString(1, ((AddressRequest.Hash) parameters).hash);
 
                 final ResultSet resultSet1 = prpstmt1.executeQuery();
 
-                final boolean hit = resultSet1.next();
+                if (!resultSet1.next()) {    // Return false if there is no hit
+                    return false;
+                }
+
+                final JSONArray jsonArray = new JSONArray();
+
+                final long internalId = resultSet1.getLong(1);
+
+                // Put all info
+                jsonArray.put(internalId);
+                jsonArray.put(resultSet1.getString(2)); // Hash
+                jsonArray.put(AddressType.valueOf(resultSet1.getString(3)));    // Address type
+                jsonArray.put(resultSet1.getString(4)); // Alias
+                jsonArray.put(resultSet1.getString(5)); // Description
 
                 resultSet1.close();
                 prpstmt1.close();
-
-                if (!hit) {    // Return false if there is no hit
-                    return false;
-                }
 
                 // Get latest and first appearance on blockchain
 
                 // Note: It is sorted by tx table's internal_id for fast search (using blocks.number will slow down query a lot)
                 // So it may returns an incorrect result because transaction's internal_id is not always in the order as block's number do
                 final PreparedStatement prpstmt2 = connection.prepareStatement(
-                        "(SELECT blocks.number, blocks.timestamp FROM transactions " +
+                        "(SELECT blocks.number, UNIX_TIMESTAMP(blocks.timestamp) FROM transactions " +
                                 "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
                                 "WHERE (to_id = ? OR contract_id = ?) AND blocks.forked = 0 " +
                                 "ORDER BY transactions.internal_id ASC LIMIT 1)" +
                                 "UNION ALL " +
-                                "(SELECT blocks.number, blocks.timestamp FROM transactions " +
+                                "(SELECT blocks.number, UNIX_TIMESTAMP(blocks.timestamp) FROM transactions " +
                                 "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
                                 "WHERE (from_id = ? OR to_id = ?) AND blocks.forked = 0 " +
                                 "ORDER BY transactions.internal_id DESC LIMIT 1)");
+                prpstmt2.setLong(1, internalId);
+                prpstmt2.setLong(2, internalId);
+                prpstmt2.setLong(3, internalId);
+                prpstmt2.setLong(4, internalId);
 
                 final ResultSet resultSet2 = prpstmt2.executeQuery();
-
-                final JSONArray jsonArray = new JSONArray();
 
                 if (resultSet2.next()) {
                     // There are matching tx, there should be 2 rows
 
                     // First appearance
-                    jsonArray.put(resultSet2.getLong(1));   // Block number
-                    jsonArray.put(resultSet2.getLong(2));   // Block timestamp
+                    jsonArray.put(resultSet2.getLong(1));       // Block number
+                    jsonArray.put(resultSet2.getString(2));     // Block timestamp
+
+                    resultSet2.next();  // Move to the next row
 
                     // Last appearance
-                    jsonArray.put(resultSet2.getLong(3));
-                    jsonArray.put(resultSet2.getLong(4));
+                    jsonArray.put(resultSet2.getLong(1));
+                    jsonArray.put(resultSet2.getString(2));
                 } else {
                     // Weird, there should be any result if the address is recorded
                     throw new IllegalDatabaseStateException("Address appearance data did not found on the database");
                 }
 
-                final long internalId = resultSet1.getLong(1);
-                jsonArray.put(internalId);
-                jsonArray.put(resultSet1.getString(2));
-                jsonArray.put(AddressType.valueOf(resultSet1.getString(3)));
-                jsonArray.put(resultSet1.getString(4));
-                jsonArray.put(resultSet1.getString(5));
+                resultSet2.close();
+                prpstmt2.close();
 
                 // TODO Tx count and mining count ?
 
+                return jsonArray;
             } else {
                 throw new InvalidRequestException("Unknown type");
             }
@@ -120,9 +130,6 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
                 }
             }
         }
-
-
-        return null;
     }
 
     static class AddressRequest {
