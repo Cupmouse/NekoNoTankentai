@@ -265,15 +265,67 @@
     };
 
     const formatUTCUnixEpoch = (unixEpoch) => {
-        let date = new Date(unixEpoch * 1000);
-        let year = date.getUTCFullYear().toString();
-        let month = paddingZero(date.getUTCMonth().toString(), 2);
-        let day = paddingZero(date.getUTCDay().toString(), 2);
-        let hours = paddingZero(date.getUTCHours().toString(), 2);
-        let minutes = paddingZero(date.getUTCMinutes().toString(), 2);
-        let seconds = paddingZero(date.getUTCSeconds().toString(), 2);
+        const date = new Date(unixEpoch * 1000);
+        const year = date.getUTCFullYear().toString();
+        const month = paddingZero((date.getUTCMonth() + 1).toString(), 2);  // Note: Jan === 0 weird
+        const day = paddingZero(date.getUTCDate().toString(), 2);
+        const hours = paddingZero(date.getUTCHours().toString(), 2);
+        const minutes = paddingZero(date.getUTCMinutes().toString(), 2);
+        const seconds = paddingZero(date.getUTCSeconds().toString(), 2);
 
-        return "UTC " + year + "/" + month + "/" + day + " " + hours + ":" + minutes + ":" + seconds;
+        return `UTC ${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+    };
+
+    const humanizeSec = (sec) => {
+        if (sec === 1) {
+            return '1 second';
+        } else if (sec < 60) {
+            return `${sec} seconds`
+        } else if (sec < 60 * 60) {
+            const mins = Math.floor(sec / 60);
+
+            // Difference if only suffixed by 's'
+            if (mins === 1) {
+                return '1 minute';
+            } else {
+                return `${mins} minutes`;
+            }
+        } else if (sec < 60 * 60 * 24) {
+            const hours = Math.floor(sec / 60 / 60);
+
+            if (hours === 1) {
+                return '1 hour';
+            } else {
+                return `${hours} hours`;
+            }
+        } else {
+            // When difference is over a day, count in days
+
+            const days = Math.floor(sec / 60 /60 / 24);
+
+            if (days === 1) {
+                return '1 day';
+            } else {
+                return `${days} days`;
+            }
+        }
+    };
+
+    const calcDiffUnixEpochFromNow = (unixEpoch) => {
+        return Math.floor(Date.now() / 1000) - unixEpoch;   // Date.now() returns UTC time
+    };
+
+    const humanizeUnixEpochDiffFromNow = (unixEpoch) => {
+        const diff = calcDiffUnixEpochFromNow(unixEpoch);   // Difference but not absolute, negative value means future from now
+
+        if (diff === 0) {
+            return 'now';   // Just now !!!
+        } else if (diff > 0) {
+            return `${humanizeSec(diff)} ago`;  // Things happened earlier
+        } else {
+            // diff < 0
+            return `${humanizeSec(diff)} later`;    // Things that will happen (!!!)
+        }
     };
 
     const genAddressIconCanvas = (address) => {
@@ -583,6 +635,7 @@
 
     // Opens a new view
     const openView = (newView) => {
+        loadingStart(); // TODO weird placement
 
         let lastView = currentView;
 
@@ -743,8 +796,6 @@
         }
 
         open() {
-            loadingStart();
-
             // Request to the server
 
             let self = this;
@@ -886,8 +937,6 @@
 
         open() {
             let content = [this.targetKey, this.targetValue];
-
-            loadingStart();
 
             let self = this;
 
@@ -1153,10 +1202,12 @@
                 const addr_type = content[2];
                 const alias = content[3];
                 const description = content[4];
-                const first_appear_block = content[5];
-                const first_appear_ts = content[6];
-                const last_appear_block = content[7];
-                const last_appear_ts = content[8];
+                const txs_count = content[5];
+                const mined_count = content[6];
+                const first_appear_block = content[7];
+                const first_appear_ts = content[8];
+                const last_appear_block = content[9];
+                const last_appear_ts = content[10];
 
                 // Mouse over hint for 'address type'
                 let addr_type_title;
@@ -1193,10 +1244,10 @@
                 ${alias_HTML}
                 ${description_HTML}
                 <p id="address-tags">Tags: <span class="address-tag">?</span></p>
-                <h2><a href="/address/${this.targetKey}/${this.targetValue}/txs">? transaction(s) involved</a></h2>
-                <h2><a href="/address/${this.targetKey}/${this.targetValue}/mined">? block(s) mined</a></h2>
-                <h2>Last activity on <a href="/block/number/${last_appear_block}" title="Block #${last_appear_block}"> ${formatUTCUnixEpoch(last_appear_ts)}</a> (10 seconds ago)</h2>
-                <h2>First appearance on <a href="/block/number/${first_appear_block}" title="Block #${first_appear_block}"> ${formatUTCUnixEpoch(first_appear_ts)}</a> (3 months ago)</h2>
+                <h2><a href="/address/${this.targetKey}/${this.targetValue}/txs">${txs_count} transactions involved</a></h2>
+                <h2><a href="/address/${this.targetKey}/${this.targetValue}/mined">${mined_count} blocks/uncles mined</a></h2>
+                <h2>Last activity at <a href="/block/number/${last_appear_block}" title="Block #${last_appear_block}"> ${formatUTCUnixEpoch(last_appear_ts)}</a> (${humanizeUnixEpochDiffFromNow(last_appear_ts)})</h2>
+                <h2>First appearance at <a href="/block/number/${first_appear_block}" title="Block #${first_appear_block}"> ${formatUTCUnixEpoch(first_appear_ts)}</a> (${humanizeUnixEpochDiffFromNow(first_appear_ts)})</h2>
             </div>
         </div>`;
 

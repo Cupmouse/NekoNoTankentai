@@ -140,6 +140,7 @@ CREATE TABLE `balance` (
   INDEX `block_id` (`block_id`),
   INDEX `address_id` (`address_id`),
   INDEX `number` (`number`),
+  INDEX `number_address_id` (`address_id`, `number`),
   CONSTRAINT `FK_balance_address` FOREIGN KEY (`address_id`) REFERENCES `addresses` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT `FK_balance_blocks` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`internal_id`) ON UPDATE CASCADE ON DELETE CASCADE
 )

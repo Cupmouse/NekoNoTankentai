@@ -12,6 +12,7 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class BlockListRequestHandler implements RequestHandler<BlockListRequestHandler.BlockListRequest> {
 
+    // TODO LETS CHANGE IT TO USE INTERNAL ID BECAUSE IT'S FASTERRRRRR
     private static final int ELEMENT_IN_PAGE = 25;
 
     @Override

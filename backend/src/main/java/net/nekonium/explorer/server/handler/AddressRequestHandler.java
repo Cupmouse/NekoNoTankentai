@@ -49,7 +49,11 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
 
                 // Gather common information
                 final PreparedStatement prpstmt1 = connection.prepareStatement(
-                        "SELECT internal_id, NEKH(address), type, alias, description " +
+                        "SELECT internal_id, NEKH(address), type, alias, description, " +
+                                "(SELECT COUNT(*) FROM transactions WHERE from_id = addresses.internal_id)" +
+                                " + (SELECT COUNT(*) FROM transactions WHERE to_id = addresses.internal_id), " +
+                                "(SELECT COUNT(*) FROM blocks WHERE blocks.miner_id = addresses.internal_id)" +
+                                " + (SELECT COUNT(*) FROM uncle_blocks WHERE uncle_blocks.miner_id = addresses.internal_id) " +
                                 "FROM addresses WHERE address = UNHEX(?)");
                 prpstmt1.setString(1, ((AddressRequest.Hash) parameters).hash);
 
@@ -69,6 +73,8 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
                 jsonArray.put(AddressType.valueOf(resultSet1.getString(3)));    // Address type
                 jsonArray.put(resultSet1.getString(4)); // Alias
                 jsonArray.put(resultSet1.getString(5)); // Description
+                jsonArray.put(resultSet1.getLong(6));   // Transaction count
+                jsonArray.put(resultSet1.getLong(7));   // Mined block count
 
                 resultSet1.close();
                 prpstmt1.close();
@@ -78,10 +84,9 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
                 // Note: It is sorted by tx table's internal_id for fast search (using blocks.number will slow down query a lot)
                 // So it may returns an incorrect result because transaction's internal_id is not always in the order as block's number do
                 final PreparedStatement prpstmt2 = connection.prepareStatement(
-                        "(SELECT blocks.number, UNIX_TIMESTAMP(blocks.timestamp) FROM transactions " +
-                                "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
-                                "WHERE (to_id = ? OR contract_id = ?) AND blocks.forked = 0 " +
-                                "ORDER BY transactions.internal_id ASC LIMIT 1)" +
+                        "(SELECT blocks.number, UNIX_TIMESTAMP(blocks.timestamp) FROM balance " +
+                                "LEFT JOIN blocks ON blocks.internal_id = balance.block_id " +
+                                "WHERE balance.address_id = ? ORDER BY balance.number ASC LIMIT 1)" +
                                 "UNION ALL " +
                                 "(SELECT blocks.number, UNIX_TIMESTAMP(blocks.timestamp) FROM transactions " +
                                 "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
@@ -90,7 +95,6 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
                 prpstmt2.setLong(1, internalId);
                 prpstmt2.setLong(2, internalId);
                 prpstmt2.setLong(3, internalId);
-                prpstmt2.setLong(4, internalId);
 
                 final ResultSet resultSet2 = prpstmt2.executeQuery();
 
@@ -99,13 +103,13 @@ public class AddressRequestHandler implements RequestHandler<AddressRequestHandl
 
                     // First appearance
                     jsonArray.put(resultSet2.getLong(1));       // Block number
-                    jsonArray.put(resultSet2.getString(2));     // Block timestamp
+                    jsonArray.put(resultSet2.getLong(2));     // Block timestamp
 
                     resultSet2.next();  // Move to the next row
 
                     // Last appearance
                     jsonArray.put(resultSet2.getLong(1));
-                    jsonArray.put(resultSet2.getString(2));
+                    jsonArray.put(resultSet2.getLong(2));
                 } else {
                     // Weird, there should be any result if the address is recorded
                     throw new IllegalDatabaseStateException("Address appearance data did not found on the database");
