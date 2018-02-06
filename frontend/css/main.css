@@ -108,20 +108,6 @@ h1 {
     display: block;
 }
 
-.tx-list-element {
-    padding-left: 0.5em;
-    margin-bottom: 0.5em;
-}
-
-.tx-sending {
-    border-left: solid 10px #fde231;
-}
-
-.tx-list-title {
-    font-size: 1em;
-    font-weight: bold;
-}
-
 .pagination {
     text-align: center;
 }
@@ -278,4 +264,42 @@ Blocks View
     background-color: #E6E6E6;
     padding: 0.2em 0.5em;
     margin: 0.2em 0;
+}
+
+/*
+ Transaction List View
+ */
+
+#tx-list-table {
+    width: 100%;
+    margin: 0.5em 0;
+}
+
+.tx-list-hexprefix {
+    padding: 0 0 0 0.2em;
+}
+
+.tx-list-highlight-send {
+    background-color: #2eb80e;
+    color: white;
+}
+.tx-list-highlight-contract-creation {
+    background-color: #e8c902;
+    color: white;
+}
+.tx-list-highlight-contract-call {
+    background-color: #db2bce;
+    color: white;
+}
+
+.tx-list-coloring-send {
+    color: #2eb80e;
+}
+
+.tx-list-coloring-contract-creation {
+    color: #e8c902;
+}
+
+.tx-list-coloring-contract-call {
+    color: #db2bce;
 }

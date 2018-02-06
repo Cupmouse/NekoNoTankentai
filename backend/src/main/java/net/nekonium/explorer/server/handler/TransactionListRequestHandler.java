@@ -85,7 +85,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
             jsonArrayRsp.put(jsonArrayPage);
             jsonArrayRsp.put(lastPageNumber);
 
-            return jsonArrayPage;
+            return jsonArrayRsp;
         } finally {
             if (connection != null) {
                 try {
@@ -161,20 +161,21 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
         if (parameters instanceof AddressHash) {
             PreparedStatement prpstmt2 = connection.prepareStatement(
-                    "SELECT NEKH(transactions.hash), blocks.number, blocks.timestamp, " +
-                            "a1.address, a2.address, a3.address, " +
+                    "SELECT NEKH(transactions.hash), blocks.number, UNIX_TIMESTAMP(blocks.timestamp), " +
+                            "NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                             "transactions.`value`, transactions.input = 0 FROM transactions " +
                             "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
                             "LEFT JOIN addresses AS a2 ON a2.internal_id = transactions.to_id " +
                             "LEFT JOIN addresses AS a3 ON a3.internal_id = transactions.contract_id " +
                             "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
-                            "WHERE (a1.address = UNHEX(?) OR a2. internal_id = UNHEX(?)) AND blocks.forked = 0 " +
+                            "WHERE (a1.address = UNHEX(?) OR a2.address = UNHEX(?)) AND blocks.forked = 0 " +
                             "ORDER BY transactions.internal_id " +
                             "LIMIT ? OFFSET ?");
 
             prpstmt2.setString(1, ((AddressHash) parameters).hash);
-            prpstmt2.setInt(2, ELEMENT_IN_PAGE);
-            prpstmt2.setInt(3, targetPageNumber);
+            prpstmt2.setString(2, ((AddressHash) parameters).hash);
+            prpstmt2.setInt(3, ELEMENT_IN_PAGE);
+            prpstmt2.setInt(4, targetPageNumber);
 
             final ResultSet resultSet2 = prpstmt2.executeQuery();
 
@@ -183,17 +184,17 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
                 final String toAddress = resultSet2.getString(5);
                 final String contractAddress = resultSet2.getString(6);
-                final boolean emptyInput = resultSet2.getBoolean(7);
+                final boolean emptyInput = resultSet2.getBoolean(8);
 
                 final NonNullPair<TransactionType, String> typeAndTarget = determineTxTypeAndTargetAddress(toAddress, contractAddress, emptyInput);
 
                 jsonArrayElem.put(typeAndTarget.getA().toString());         // Tx type
                 jsonArrayElem.put(resultSet2.getString(1));     // Tx hash
                 jsonArrayElem.put(resultSet2.getString(2));     // Block number
-                jsonArrayElem.put(resultSet2.getString(3));     // Timestamp
+                jsonArrayElem.put(resultSet2.getLong(3));     // Timestamp
                 jsonArrayElem.put(resultSet2.getString(4));     // From address
                 jsonArrayElem.put(typeAndTarget.getB());                    // Traget
-                jsonArrayElem.put(new BigInteger(resultSet2.getBytes(5)).toString());   // Value
+                jsonArrayElem.put(new BigInteger(resultSet2.getBytes(7)).toString());   // Value
 
                 jsonArrayPage.put(jsonArrayElem);
             }
@@ -207,7 +208,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
             if (parameters instanceof BlockHash) {
                 prpstmt2 = connection.prepareStatement(
-                        "SELECT NEKH(transactions.hash), a1.address, a2.address, a3.address, " +
+                        "SELECT NEKH(transactions.hash), NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                                 "transactions.`value`, transactions.input = 0 FROM transactions " +
                                 "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
                                 "LEFT JOIN addresses AS a2 ON a2.internal_id = transactions.to_id " +
@@ -220,7 +221,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
             } else if (parameters instanceof BlockNumber) {
                 prpstmt2 = connection.prepareStatement(
-                        "SELECT NEKH(transactions.hash), a1.address, a2.address, a3.address, " +
+                        "SELECT NEKH(transactions.hash), NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                                 "transactions.`value`, transactions.input = 0 FROM transactions " +
                                 "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
                                 "LEFT JOIN addresses AS a2 ON a2.internal_id = transactions.to_id " +
