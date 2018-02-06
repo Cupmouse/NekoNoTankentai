@@ -863,12 +863,13 @@
             let tableContent = '';
 
             for (let i in blocks) {
-                let blockelm = blocks[i];
-                let number = blockelm[0];
-                let hash = blockelm[1];
-                let miner = blockelm[2];
-                let txCount = blockelm[3];
-                let uncleCount = blockelm[4];
+                const blockelm = blocks[i];
+                const id = blockelm[0];
+                const number = blockelm[1];
+                const hash = blockelm[2];
+                const miner = blockelm[3];
+                const txCount = blockelm[4];
+                const uncleCount = blockelm[5];
                 let forked;
 
                 if (blockelm[5]) {
@@ -877,8 +878,8 @@
                     <td>${number}</td>
                     <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
                     <td><a href="/address/hash/${miner}">${shorten(miner, 25)}</a></td>
-                    <td><a href="/block/id/${txCount}">${txCount}</a></td>
-                    <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
+                    <td><a href="/block/id/${id}/txs">${txCount}</a></td>
+                    <td><a href="/block/id/${id}/mined">${uncleCount}</a></td>
                     <td><i class="fa fa-code-fork" aria-hidden="true"></i></td>
                     </tr>`;
                 } else {
@@ -887,8 +888,8 @@
                     <td><a href="/block/number/${number}">${number}</a></td>
                     <td><a href="/block/hash/${hash}">${shorten(hash, 12)}</a></td>
                     <td><a href="/address/hash/${miner}">${shorten(miner, 25)}</a></td>
-                    <td><a href="/block/id/${txCount}">${txCount}</a></td>
-                    <td><a href="/block/id/${uncleCount}">${uncleCount}</a></td>
+                    <td><a href="/block/number/${number}/txs">${txCount}</a></td>
+                    <td><a href="/block/number/${number}/mined">${uncleCount}</a></td>
                     <td></td>
                     </tr>`;
                 }
