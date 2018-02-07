@@ -42,7 +42,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final BigInteger number = getNonNegativeBigInteger(jsonArrayContent, 1, "number");
 
-            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
+            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
             return new TransactionRequest.NumberAndIndex(number, index);
         } else if (typeStr.equals("id_and_index")) {
@@ -52,7 +52,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
             checkHasString(jsonArrayContent, 1, "internal_id");
             final BigInteger internalId = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "internal_id");
 
-            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
+            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
             return new TransactionRequest.InternalIdAndIndex(internalId, index);
         } else if (typeStr.equals("hash")) {

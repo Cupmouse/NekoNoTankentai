@@ -97,11 +97,11 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             /* Parse result set to json */
 
-            final JSONObject jsonObjectContents = new JSONObject();
+            final JSONArray jsonArrayContents = new JSONArray();
 
             final long blockInternalId = resultSet.getLong(1);
 
-            writeBlock(jsonObjectContents,
+            writeBlock(jsonArrayContents,
                     blockInternalId,
                     resultSet.getLong(2),
                     resultSet.getString(3),
@@ -121,10 +121,10 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             /* Get uncle blocks */
 
-            final Object uncleBlocks = getUncleBlocks(connection, blockInternalId);
-            jsonObjectContents.put("uncles", uncleBlocks);
+            final JSONArray uncleBlocks = getUncleBlocks(connection, blockInternalId);
+            jsonArrayContents.put(uncleBlocks);
 
-            return jsonObjectContents;
+            return jsonArrayContents;
         } finally {
             if (connection != null) {
                 try {
@@ -138,23 +138,23 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
     // TODO Change type here if extra space for number or internal_id is needed
 
-    private void writeBlock(JSONObject jsonObject,
+    private void writeBlock(JSONArray jsonArray,
                                   long internalId, long number, String hash, String parentHash, long timestamp, String miner,
                                   String difficulty, long gasLimit, long gasUsed, String extraData, String nonce,
                                   int size, boolean forked) {
-        jsonObject.put("internal_id",   internalId);
-        jsonObject.put("number",        number);
-        jsonObject.put("hash",          hash);
-        jsonObject.put("parentHash",    parentHash);
-        jsonObject.put("timestamp",     timestamp);
-        jsonObject.put("miner",         miner);
-        jsonObject.put("difficulty",    difficulty);
-        jsonObject.put("gas_limit",     gasLimit);
-        jsonObject.put("gas_used",      gasUsed);
-        jsonObject.put("extra_data",    extraData);
-        jsonObject.put("nonce",         nonce);
-        jsonObject.put("size",          size);
-        jsonObject.put("forked",        forked);
+        jsonArray.put(internalId);
+        jsonArray.put(number);
+        jsonArray.put(hash);
+        jsonArray.put(parentHash);
+        jsonArray.put(timestamp);
+        jsonArray.put(miner);
+        jsonArray.put(difficulty);
+        jsonArray.put(gasLimit);
+        jsonArray.put(gasUsed);
+        jsonArray.put(extraData);
+        jsonArray.put(nonce);
+        jsonArray.put(size);
+        jsonArray.put(forked);
     }
 
     private JSONArray getUncleBlocks(Connection connection, long blockInternalId) throws SQLException, InvalidRequestException {

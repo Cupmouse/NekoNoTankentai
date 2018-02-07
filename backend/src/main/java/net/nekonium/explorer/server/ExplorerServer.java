@@ -63,10 +63,11 @@ public class ExplorerServer {
         RequestEndPoint.registerHandler("search",           new SearchRequestHandler());
         RequestEndPoint.registerHandler("block",            new BlockRequestHandler());
         RequestEndPoint.registerHandler("block-list",       new BlockListRequestHandler());
+        RequestEndPoint.registerHandler("uncle",            new UncleRequestHandler());
         RequestEndPoint.registerHandler("transaction",      new TransactionRequestHandler());
         RequestEndPoint.registerHandler("transaction-list", new TransactionListRequestHandler());
-        RequestEndPoint.registerHandler("uncle",            new UncleRequestHandler());
         RequestEndPoint.registerHandler("address",          new AddressRequestHandler());
+        RequestEndPoint.registerHandler("address-mined-list", new AddressMinedListRequestHandler());
 
         this.httpServer.start();    // Start a server
 

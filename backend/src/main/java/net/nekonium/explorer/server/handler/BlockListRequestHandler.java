@@ -26,7 +26,11 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
         if (typeStr.equals("page")) {
             checkParamCount(jsonArrayContent, 2);
 
-            final int pageNumber = parseNonNegativeInt(jsonArrayContent.get(1), "page_number");
+            final int pageNumber = parseUnsignedInt(jsonArrayContent.get(1), "page_number");
+
+            if (pageNumber < 1) {
+                throw new InvalidRequestException("'page_number' should be positive");
+            }
 
             return new BlockListRequest.Page(pageNumber);
         } else if (typeStr.equals("last")) {
@@ -50,7 +54,7 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
             // Get last page number from database
 
             final long approxRowCount = getApproximateRowCount(connection);      // Last page number
-            final int lastPageNum = (int) ((approxRowCount - 1) / ELEMENT_IN_PAGE + 1);
+            final int lastPageNum = (int) (approxRowCount / ELEMENT_IN_PAGE + 1);
             final int targetPageNum;
 
             if (parameters instanceof BlockListRequest.Page) {

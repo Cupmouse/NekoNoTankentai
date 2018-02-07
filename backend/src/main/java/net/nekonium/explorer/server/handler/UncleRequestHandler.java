@@ -35,7 +35,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
             checkHasString(jsonArrayContent, 1, "number");
             final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
 
-            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
+            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
             return new UncleRequest.NumberAndIndex(number, index);
         } else if (typeStr.equals("id_and_index")) {
@@ -45,7 +45,7 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
             checkHasString(jsonArrayContent, 1, "number");
             final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
 
-            final int index = parseNonNegativeInt(jsonArrayContent.get(2), "index");
+            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
             return new UncleRequest.Number(number);
         } else if (typeStr.equals("hash")) {

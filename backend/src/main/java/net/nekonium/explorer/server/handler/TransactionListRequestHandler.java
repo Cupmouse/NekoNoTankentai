@@ -20,8 +20,8 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class TransactionListRequestHandler implements RequestHandler<TransactionListRequestHandler.TransactionListRequest> {
 
-    private static final int TX_LAST_PAGE_SEARCH_ELEM_LIMIT = 1000;
-    private static final int ELEMENT_IN_PAGE = 25;
+    private static final int SEARCH_ELEMENTS_LIMIT = 1000;
+    private static final int ELEMENTS_IN_PAGE = 25;
 
     @Override
     public TransactionListRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
@@ -33,7 +33,14 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
         final String typeStr = getString(jsonArrayContent, 0, "type");
 
-        final int pageNumber = parseNonNegativeInt(jsonArrayContent.get(2), "page_number");
+        final int pageNumber = parseUnsignedInt(jsonArrayContent.get(2), "page_number");
+
+        if (pageNumber < 1) {
+            throw new InvalidRequestException("'page_number' should be positive");
+        }
+        if (ELEMENTS_IN_PAGE * pageNumber > SEARCH_ELEMENTS_LIMIT) {
+            throw new InvalidRequestException("'page_number' exceeded server limit");
+        }
 
         if (typeStr.equals("address-hash")) {
             final String addressHash = getAddressHash(jsonArrayContent, 1, "address_hash");
@@ -64,7 +71,8 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
             // Find the last page number
 
-            final int lastPageNumber = getLastPageNumber(connection, parameters);
+            final int approximateRowCount = getApproximateRowCount(connection, parameters);
+            final int lastPageNumber = approximateRowCount / ELEMENTS_IN_PAGE + 1;
 
             // Determine target page
             final int targetPageNumber;
@@ -75,15 +83,27 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                 targetPageNumber = parameters.pageNumber;  // Request for specified page
             }
 
-            // Get data from a database
+            // Get page
 
-            final JSONArray jsonArrayPage = querySearch(connection, parameters, targetPageNumber);
+            final JSONArray jsonArrayPage;
+
+            if (targetPageNumber > lastPageNumber) {
+                // No result expected, return empty page
+
+                jsonArrayPage = new JSONArray();
+            } else {
+                // Get data from a database
+
+                jsonArrayPage = querySearch(connection, parameters, targetPageNumber);
+            }
 
             // Create new array and put page array inside of it, also last page number and return them
             final JSONArray jsonArrayRsp = new JSONArray();
 
             jsonArrayRsp.put(jsonArrayPage);
             jsonArrayRsp.put(lastPageNumber);
+            jsonArrayRsp.put(approximateRowCount);
+            jsonArrayRsp.put(SEARCH_ELEMENTS_LIMIT);
 
             return jsonArrayRsp;
         } finally {
@@ -97,7 +117,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
         }
     }
 
-    private int getLastPageNumber(Connection connection, TransactionListRequest parameters) throws SQLException, InvalidRequestException {
+    private int getApproximateRowCount(Connection connection, TransactionListRequest parameters) throws SQLException, InvalidRequestException {
         final PreparedStatement prpstmt;
 
         if (parameters instanceof AddressHash) {
@@ -114,7 +134,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
 
             prpstmt.setString(1, addressHash);
             prpstmt.setString(2, addressHash);
-            prpstmt.setInt(3, TX_LAST_PAGE_SEARCH_ELEM_LIMIT);
+            prpstmt.setInt(3, SEARCH_ELEMENTS_LIMIT + 1);
 
         } else if (parameters instanceof BlockHash) {
             final String blockHash = ((BlockHash) parameters).hash;
@@ -127,7 +147,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                             "WHERE blocks.hash = UNHEX(?) " +
                             "LIMIT ?) AS t");
             prpstmt.setString(1, blockHash);
-            prpstmt.setInt(2,TX_LAST_PAGE_SEARCH_ELEM_LIMIT);
+            prpstmt.setInt(2, SEARCH_ELEMENTS_LIMIT + 1);
 
         } else if (parameters instanceof BlockNumber) {
             final BigInteger blockNumber = ((BlockNumber) parameters).blockNumber;
@@ -140,7 +160,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                             "LIMIT ?) AS t");
 
             prpstmt.setString(1, blockNumber.toString());
-            prpstmt.setInt(2, TX_LAST_PAGE_SEARCH_ELEM_LIMIT);
+            prpstmt.setInt(2, SEARCH_ELEMENTS_LIMIT + 1);
         } else {
             throw new InvalidRequestException("Unknown parameter type");
         }
@@ -148,19 +168,19 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
         final ResultSet resultSet = prpstmt.executeQuery();
 
         resultSet.next();  // Expect only and least 1 row
-        final int lastPageNumber = resultSet.getInt(1) / ELEMENT_IN_PAGE + 1;
+        final int count = resultSet.getInt(1);
 
         resultSet.close();
         prpstmt.close();
 
-        return lastPageNumber;
+        return count;
     }
 
     private JSONArray querySearch(Connection connection, TransactionListRequest parameters, int targetPageNumber) throws SQLException, InvalidRequestException {
         final JSONArray jsonArrayPage = new JSONArray();    // All txs will be converted and stored here
 
         if (parameters instanceof AddressHash) {
-            PreparedStatement prpstmt2 = connection.prepareStatement(
+            PreparedStatement prpstmt = connection.prepareStatement(
                     "SELECT NEKH(transactions.hash), blocks.number, UNIX_TIMESTAMP(blocks.timestamp), " +
                             "NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                             "transactions.`value`, transactions.input = 0 FROM transactions " +
@@ -169,45 +189,45 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                             "LEFT JOIN addresses AS a3 ON a3.internal_id = transactions.contract_id " +
                             "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
                             "WHERE (a1.address = UNHEX(?) OR a2.address = UNHEX(?)) AND blocks.forked = 0 " +
-                            "ORDER BY transactions.internal_id " +
+                            "ORDER BY transactions.internal_id DESC " +
                             "LIMIT ? OFFSET ?");
 
-            prpstmt2.setString(1, ((AddressHash) parameters).hash);
-            prpstmt2.setString(2, ((AddressHash) parameters).hash);
-            prpstmt2.setInt(3, ELEMENT_IN_PAGE);
-            prpstmt2.setInt(4, targetPageNumber);
+            prpstmt.setString(1, ((AddressHash) parameters).hash);
+            prpstmt.setString(2, ((AddressHash) parameters).hash);
+            prpstmt.setInt(3, ELEMENTS_IN_PAGE);
+            prpstmt.setInt(4, ELEMENTS_IN_PAGE * (targetPageNumber - 1));
 
-            final ResultSet resultSet2 = prpstmt2.executeQuery();
+            final ResultSet resultSet = prpstmt.executeQuery();
 
-            while (resultSet2.next()) {
+            while (resultSet.next()) {
                 final JSONArray jsonArrayElem = new JSONArray();
 
-                final String toAddress = resultSet2.getString(5);
-                final String contractAddress = resultSet2.getString(6);
-                final boolean emptyInput = resultSet2.getBoolean(8);
+                final String toAddress = resultSet.getString(5);
+                final String contractAddress = resultSet.getString(6);
+                final boolean emptyInput = resultSet.getBoolean(8);
 
                 final NonNullPair<TransactionType, String> typeAndTarget = determineTxTypeAndTargetAddress(toAddress, contractAddress, emptyInput);
 
                 jsonArrayElem.put(typeAndTarget.getA().toString());         // Tx type
-                jsonArrayElem.put(resultSet2.getString(1));     // Tx hash
-                jsonArrayElem.put(resultSet2.getString(2));     // Block number
-                jsonArrayElem.put(resultSet2.getLong(3));     // Timestamp
-                jsonArrayElem.put(resultSet2.getString(4));     // From address
+                jsonArrayElem.put(resultSet.getString(1));     // Tx hash
+                jsonArrayElem.put(resultSet.getString(2));     // Block number
+                jsonArrayElem.put(resultSet.getLong(3));     // Timestamp
+                jsonArrayElem.put(resultSet.getString(4));     // From address
                 jsonArrayElem.put(typeAndTarget.getB());                    // Traget
-                jsonArrayElem.put(new BigInteger(resultSet2.getBytes(7)).toString());   // Value
+                jsonArrayElem.put(new BigInteger(resultSet.getBytes(7)).toString());   // Value
 
                 jsonArrayPage.put(jsonArrayElem);
             }
 
-            resultSet2.close();
-            prpstmt2.close();
+            resultSet.close();
+            prpstmt.close();
 
         } else {
             // Request by block hash and number will return different result
-            final PreparedStatement prpstmt2;
+            final PreparedStatement prpstmt;
 
             if (parameters instanceof BlockHash) {
-                prpstmt2 = connection.prepareStatement(
+                prpstmt = connection.prepareStatement(
                         "SELECT NEKH(transactions.hash), NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                                 "transactions.`value`, transactions.input = 0 FROM transactions " +
                                 "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
@@ -215,12 +235,14 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                                 "LEFT JOIN addresses AS a3 ON a3.internal_id = transactions.contract_id " +
                                 "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
                                 "WHERE blocks.hash = UNHEX(?) AND blocks.forked = 0 " +
-                                "ORDER BY transactions.internal_id " +
+                                "ORDER BY transactions.internal_id DESC " +
                                 "LIMIT ? OFFSET ?");
-                prpstmt2.setString(1, ((BlockHash) parameters).hash);
+                prpstmt.setString(1, ((BlockHash) parameters).hash);
+                prpstmt.setInt(2, ELEMENTS_IN_PAGE);
+                prpstmt.setInt(3, ELEMENTS_IN_PAGE * (targetPageNumber - 1));
 
             } else if (parameters instanceof BlockNumber) {
-                prpstmt2 = connection.prepareStatement(
+                prpstmt = connection.prepareStatement(
                         "SELECT NEKH(transactions.hash), NEKH(a1.address), NEKH(a2.address), NEKH(a3.address), " +
                                 "transactions.`value`, transactions.input = 0 FROM transactions " +
                                 "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
@@ -231,37 +253,39 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                                 "ORDER BY transactions.`index` ASC " +
                                 "LIMIT ? OFFSET ?");
 
-                prpstmt2.setString(1, ((BlockNumber) parameters).blockNumber.toString());
+                prpstmt.setString(1, ((BlockNumber) parameters).blockNumber.toString());
+                prpstmt.setInt(2, ELEMENTS_IN_PAGE);
+                prpstmt.setInt(3, ELEMENTS_IN_PAGE * (targetPageNumber - 1));
             } else {
                 throw new InvalidRequestException("Unknown parameter type");
             }
 
-            final ResultSet resultSet2 = prpstmt2.executeQuery();
+            final ResultSet resultSet = prpstmt.executeQuery();
 
             // Convert all rows to tx json array object
             // Sorted by transaction index, ascending
 
-            while (resultSet2.next()) {
+            while (resultSet.next()) {
                 final JSONArray jsonArrayElem = new JSONArray();
 
-                final String toAddress = resultSet2.getString(3);
-                final String contractAddress = resultSet2.getString(4);
-                final boolean emptyInput = resultSet2.getBoolean(6);
+                final String toAddress = resultSet.getString(3);
+                final String contractAddress = resultSet.getString(4);
+                final boolean emptyInput = resultSet.getBoolean(6);
 
                 final NonNullPair<TransactionType, String> typeAndTarget =
                         determineTxTypeAndTargetAddress(toAddress, contractAddress, emptyInput);
 
-                jsonArrayElem.put(typeAndTarget.getA().toString());
-                jsonArrayElem.put(resultSet2.getString(1)); // Transaction hash
-                jsonArrayElem.put(resultSet2.getString(2));
-                jsonArrayElem.put(typeAndTarget.getB());
-                jsonArrayElem.put(new BigInteger(resultSet2.getBytes(5)).toString());
+                jsonArrayElem.put(typeAndTarget.getA().toString());     // Tx type
+                jsonArrayElem.put(resultSet.getString(1)); // Transaction hash
+                jsonArrayElem.put(resultSet.getString(2)); // From hash
+                jsonArrayElem.put(typeAndTarget.getB());                // Target hash
+                jsonArrayElem.put(new BigInteger(resultSet.getBytes(5)).toString());    // Value
 
                 jsonArrayPage.put(jsonArrayElem);
             }
 
-            resultSet2.close();
-            prpstmt2.close();
+            resultSet.close();
+            prpstmt.close();
         }
 
         return jsonArrayPage;

@@ -334,3 +334,11 @@ Blocks View
 .tx-list-coloring-contract-call {
     color: #db2bce;
 }
+
+/*
+  Mined List View
+ */
+
+#mined-list-table {
+    width: 100%;
+}

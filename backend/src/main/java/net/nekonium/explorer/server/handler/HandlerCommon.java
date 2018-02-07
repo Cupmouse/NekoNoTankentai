@@ -100,7 +100,7 @@ class HandlerCommon {
         return parseNonNegativeBigInteger(jsonArray.getString(count), name);
     }
 
-    static int parseNonNegativeInt(Object o, String name) throws InvalidRequestException {
+    static int parseUnsignedInt(Object o, String name) throws InvalidRequestException {
         if (!(o instanceof Number)) {
             throw new InvalidRequestException("'" + name + "' has to be numeric");
         }
