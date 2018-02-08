@@ -90,10 +90,10 @@ class HandlerCommon {
         return bigInteger;
     }
 
-    static BigInteger getNonNegativeBigInteger(JSONArray jsonArray, int count, String name) throws InvalidRequestException {
-        checkHasString(jsonArray, count, name);
+    static BigInteger getNonNegativeBigInteger(JSONArray jsonArray, int index, String name) throws InvalidRequestException {
+        checkHasString(jsonArray, index, name);
 
-        return parseNonNegativeBigInteger(jsonArray.getString(count), name);
+        return parseNonNegativeBigInteger(jsonArray.getString(index), name);
     }
 
     static int parseUnsignedInt(Object o, String name) throws InvalidRequestException {
@@ -108,6 +108,10 @@ class HandlerCommon {
         }
 
         return result;
+    }
+
+    static int getUnsignedInt(JSONArray jsonArray, int index, String name) throws InvalidRequestException {
+        return parseUnsignedInt(jsonArray.get(index), name);
     }
 
     static NonNullPair<TransactionType, String> determineTxTypeAndTargetAddress(String toAddress, String contractAddress, boolean emptyInput) throws InvalidRequestException {

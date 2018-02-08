@@ -3,6 +3,7 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
+import net.nekonium.explorer.server.RequestHandlingException;
 import net.nekonium.explorer.util.FormatValidateUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,8 +18,7 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.UncleRequest> {
 
-    public static final String UNCLE_COLUMNS = "internal_id, number, NEKH(hash), UNIX_TIMESTAMP(timestamp), NEKH(miner), " +
-            "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, size";
+    // TODO Return forked or not
 
     @Override
     public UncleRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
@@ -27,36 +27,40 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
         final JSONArray jsonArrayContent = jsonObject.getJSONArray("content");
 
         checkHasParameter(jsonArrayContent);
-        checkHasString(jsonArrayContent, 0, "type");
 
-        final String typeStr = jsonArrayContent.getString(0);
+        final String typeStr = getString(jsonArrayContent, 0, "type");
 
-        if (typeStr.equals("number_and_index")) {
-
+        if (typeStr.equals("hash-index")) {
             checkParamCount(jsonArrayContent, 3);
 
-            checkHasString(jsonArrayContent, 1, "number");
-            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
+            final String blockHash = getString(jsonArrayContent, 1, "blockHash");
+            if (!FormatValidateUtil.isValidBlockHash(blockHash)) {
+                throw new InvalidRequestException("Invalid block hash");
+            }
+            final int uncleIndex = getUnsignedInt(jsonArrayContent, 1, "uncleIndex");
 
-            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
+            return new UncleRequest.HashAndIndex(blockHash.substring(2), uncleIndex);
+
+        } else if (typeStr.equals("number-index")) {
+            checkParamCount(jsonArrayContent, 3);
+
+            final BigInteger number = getNonNegativeBigInteger(jsonArrayContent, 1, "number");
+            final int index = getUnsignedInt(jsonArrayContent, 2, "index");
 
             return new UncleRequest.NumberAndIndex(number, index);
-        } else if (typeStr.equals("id_and_index")) {
 
+        } else if (typeStr.equals("id-index")) {
             checkParamCount(jsonArrayContent, 3);
 
-            checkHasString(jsonArrayContent, 1, "number");
-            final BigInteger number = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "number");
+            final BigInteger blockId = getNonNegativeBigInteger(jsonArrayContent, 1, "blockId");
+            final int index = getUnsignedInt(jsonArrayContent, 2, "index");
 
-            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
+            return new UncleRequest.IdAndIndex(blockId, index);
 
-            return new UncleRequest.Number(number);
         } else if (typeStr.equals("hash")) {
-
             checkParamCount(jsonArrayContent, 2);
-            checkHasString(jsonArrayContent, 1, "hash");
 
-            final String hash = jsonArrayContent.getString(1);
+            final String hash = getString(jsonArrayContent, 1, "hash");
 
             if (!FormatValidateUtil.isValidBlockHash(hash)) {
                 throw new InvalidRequestException("Invalid block hash");
@@ -79,29 +83,64 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
 
             if (parameters instanceof UncleRequest.Hash) {
                 prpstmt = connection.prepareStatement(
-                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE hash = UNHEX(?) LIMIT 1");
+                        "SELECT uncle_blocks.internal_id, uncle_blocks.number, NEKH(uncle_blocks.hash), " +
+                                "UNIX_TIMESTAMP(uncle_blocks.timestamp), NEKH(addresses.address), " +
+                                "uncle_blocks.difficulty, uncle_blocks.gas_limit, uncle_blocks.gas_used, NEKH(uncle_blocks.extra_data), " +
+                                "uncle_blocks.nonce, uncle_blocks.size FROM uncle_blocks " +
+                                "LEFT JOIN addresses ON uncle_blocks.miner_id = addresses.internal_id " +
+                                "LEFT JOIN blocks ON blocks.internal_id = uncle_blocks.block_id " +
+                                "WHERE uncle_blocks.hash = UNHEX(?) AND forked = 0 " +
+                                "LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.Hash) parameters).hash);
-            } else if (parameters instanceof UncleRequest.Number) {
-                prpstmt = connection.prepareStatement(
-                        "SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks WHERE number = ? LIMIT 1");
-                prpstmt.setString(1, ((UncleRequest.Number) parameters).number.toString());
-            } else {
-                /* UncleRequest.NumberAndIndex */
 
-                prpstmt = connection.prepareStatement("SELECT " + UNCLE_COLUMNS + " FROM uncle_blocks " +
-                        "WHERE block_id = (SELECT blocks.internal_id FROM blocks WHERE blocks.number = ?) AND `index` = ? LIMIT 1");
+            } else if (parameters instanceof UncleRequest.IdAndIndex) {
+                prpstmt = connection.prepareStatement(
+                        "SELECT uncle_blocks.internal_id, number, NEKH(hash), UNIX_TIMESTAMP(timestamp), NEKH(address), " +
+                                "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, size FROM uncle_blocks " +
+                                "LEFT JOIN addresses ON uncle_blocks.miner_id = addresses.internal_id " +
+                                "WHERE uncle_blocks.internal_id = ? AND uncle_blocks.`index` = ? " +
+                                "LIMIT 1");
+                prpstmt.setString(1, ((UncleRequest.IdAndIndex) parameters).id.toString());
+                prpstmt.setInt(2, ((UncleRequest.IdAndIndex) parameters).index);
+
+            } else if (parameters instanceof UncleRequest.NumberAndIndex) {
+                prpstmt = connection.prepareStatement(
+                        "SELECT uncle_blocks.internal_id, uncle_blocks.number, NEKH(uncle_blocks.hash), " +
+                                "UNIX_TIMESTAMP(uncle_blocks.timestamp), NEKH(addresses.address), " +
+                                "uncle_blocks.difficulty, uncle_blocks.gas_limit, uncle_blocks.gas_used, NEKH(uncle_blocks.extra_data), " +
+                                "uncle_blocks.nonce, uncle_blocks.size FROM uncle_blocks " +
+                                "LEFT JOIN addresses ON uncle_blocks.miner_id = addresses.internal_id " +
+                                "LEFT JOIN blocks ON blocks.internal_id = uncle_blocks.block_id " +
+                                "WHERE blocks.number = ? AND uncle_blocks.`index` = ? AND forked = 0 " +
+                                "LIMIT 1");
                 prpstmt.setString(1, ((UncleRequest.NumberAndIndex) parameters).number.toString());
                 prpstmt.setInt(2, ((UncleRequest.NumberAndIndex) parameters).index);
+
+            } else if (parameters instanceof UncleRequest.HashAndIndex) {
+                prpstmt = connection.prepareStatement(
+                        "SELECT uncle_blocks.internal_id, uncle_blocks.number, NEKH(uncle_blocks.hash), " +
+                                "UNIX_TIMESTAMP(uncle_blocks.timestamp), NEKH(addresses.address), " +
+                                "uncle_blocks.difficulty, uncle_blocks.gas_limit, uncle_blocks.gas_used, NEKH(uncle_blocks.extra_data), " +
+                                "uncle_blocks.nonce, uncle_blocks.size FROM uncle_blocks " +
+                                "LEFT JOIN addresses ON uncle_blocks.miner_id = addresses.internal_id " +
+                                "LEFT JOIN blocks ON blocks.internal_id = uncle_blocks.block_id " +
+                                "WHERE blocks.hash = UNHEX(?) AND uncle_blocks.`index` = ? AND forked = 0 " +
+                                "LIMIT 1");
+                prpstmt.setString(1, ((UncleRequest.HashAndIndex) parameters).hash);
+                prpstmt.setInt(2, ((UncleRequest.HashAndIndex) parameters).index);
+
+            } else {
+                throw new RequestHandlingException("Unknown uncle request type");
             }
 
             final ResultSet resultSet = prpstmt.executeQuery();
 
             if (resultSet.next()) {
-                final JSONObject jsonObjectUncle = parseUncleJSON(resultSet);
+                final JSONArray jsonArray = parseUncleJSON(resultSet);
 
                 prpstmt.close();
 
-                return jsonObjectUncle;
+                return jsonArray;
             } else {
                 prpstmt.close();
 
@@ -118,22 +157,23 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
         }
     }
 
-    private static JSONObject parseUncleJSON(ResultSet resultSet) throws SQLException {
-        final JSONObject jsonObjectUncle = new JSONObject();
+    private static JSONArray parseUncleJSON(ResultSet resultSet) throws SQLException {
+        final JSONArray jsonArray = new JSONArray();
 
         int n = 0;
-        jsonObjectUncle.put("internal_id"   , resultSet.getString(++n));
-        jsonObjectUncle.put("number"        , resultSet.getString(++n));
-        jsonObjectUncle.put("hash"          , resultSet.getString(++n));
-        jsonObjectUncle.put("timestamp"     , resultSet.getLong(++n));
-        jsonObjectUncle.put("miner"         , resultSet.getString(++n));
-        jsonObjectUncle.put("difficulty"    , resultSet.getString(++n));
-        jsonObjectUncle.put("gas_limit"     , resultSet.getLong(++n));
-        jsonObjectUncle.put("gas_used"      , resultSet.getLong(++n));
-        jsonObjectUncle.put("extra_data"    , resultSet.getString(++n));
-        jsonObjectUncle.put("nonce"         , resultSet.getString(++n));
-        jsonObjectUncle.put("size"          , resultSet.getInt(++n));
-        return jsonObjectUncle;
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getLong(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getLong(++n));
+        jsonArray.put(resultSet.getLong(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getString(++n));
+        jsonArray.put(resultSet.getInt(++n));
+
+        return jsonArray;
     }
 
     static class UncleRequest {
@@ -155,11 +195,23 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
             }
         }
 
-        static class Number extends UncleRequest {
-            private final BigInteger number;
+        static class IdAndIndex extends UncleRequest {
+            private final BigInteger id;
+            private final int index;
 
-            private Number(BigInteger number) {
-                this.number = number;
+            public IdAndIndex(BigInteger id, int index) {
+                this.id = id;
+                this.index = index;
+            }
+        }
+
+        static class HashAndIndex extends UncleRequest {
+            private final String hash;
+            private final int index;
+
+            public HashAndIndex(String hash, int index) {
+                this.hash = hash;
+                this.index = index;
             }
         }
     }

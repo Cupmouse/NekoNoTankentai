@@ -16,6 +16,7 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.BlockRequest> {
 
+    // TODO block number and id have not to be BigInteger since long can cover pretty much large number like 2^63-1, never run out of it unless network exists over 100 million yrs i guess
     private static final String BLOCK_NONCONDITION = "SELECT internal_id, number, NEKH(hash), NEKH((SELECT hash FROM blocks AS t WHERE t.internal_id = blocks.parent)), " +
             "UNIX_TIMESTAMP(timestamp), NEKH((SELECT address FROM addresses WHERE addresses.internal_id = blocks.miner_id)), " +
             "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, size, forked FROM blocks WHERE ";
@@ -43,12 +44,12 @@ public class BlockRequestHandler implements RequestHandler<BlockRequestHandler.B
 
             /* Converts to BigInteger to check if sent string is actually a "number" */
 
-            final BigInteger blockNumber = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "block number");
+            final BigInteger blockNumber = getNonNegativeBigInteger(jsonArrayContent, 1, "block number");
 
             return new BlockRequest.Number(blockNumber);   // Block number
-        } else if (typeStr.equals("internal_id")) {
+        } else if (typeStr.equals("id")) {
 
-            final BigInteger internalId = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "internal id");
+            final BigInteger internalId = getNonNegativeBigInteger(jsonArrayContent, 1, "internal id");
 
             return new BlockRequest.InternalId(internalId);
         } else {
