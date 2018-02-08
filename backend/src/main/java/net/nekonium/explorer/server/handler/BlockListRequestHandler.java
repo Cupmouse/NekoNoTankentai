@@ -54,7 +54,7 @@ public class BlockListRequestHandler implements RequestHandler<BlockListRequestH
             // Get last page number from database
 
             final long approxRowCount = getApproximateRowCount(connection);      // Last page number
-            final int lastPageNum = (int) (approxRowCount / ELEMENT_IN_PAGE + 1);
+            final int lastPageNum = (int) ((approxRowCount - 1) / ELEMENT_IN_PAGE + 1);
             final int targetPageNum;
 
             if (parameters instanceof BlockListRequest.Page) {

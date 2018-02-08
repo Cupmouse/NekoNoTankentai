@@ -57,7 +57,8 @@ public class AddressMinedListRequestHandler implements RequestHandler<AddressMin
 
             final long addressId = pair.getA();
             final int approximateRowCount = pair.getB();
-            final int lastPageNumber = approximateRowCount / SEARCH_ELEMENTS_IN_PAGE + 1;
+            final int limitedRowCount = approximateRowCount <= SEARCH_ELEMENT_LIMIT ? approximateRowCount : SEARCH_ELEMENT_LIMIT;
+            final int lastPageNumber = (limitedRowCount - 1) / SEARCH_ELEMENTS_IN_PAGE + 1;
 
             final JSONArray jsonArray = new JSONArray();    // Result json structure root
 
@@ -169,17 +170,17 @@ public class AddressMinedListRequestHandler implements RequestHandler<AddressMin
             if (uncleBlockNumber.equals("-1")) {
                 // Normal block
                 jsonArrayElem.put("BLOCK"); // Type
-                final String blockNumber;
-                blockNumber = resultSet.getString(1);
+
+                final String blockNumber = resultSet.getString(1);
                 jsonArrayElem.put(blockNumber); // Block number
-                jsonArrayElem.put(resultSet.getInt(2));    // Txs mined in a block FIXME maybe overflow if Nekonium grows unbelievably
+                jsonArrayElem.put(resultSet.getInt(3));    // Number of uncles included in an block
                 jsonArrayElem.put(getTxFeeOf(blockNumber, txFeesInBlock));
             } else {
                 // Uncle block
                 jsonArrayElem.put("UNCLE_BLOCK");   // Type
-                jsonArrayElem.put(resultSet.getString(2)); // Mined block number
-                jsonArrayElem.put(resultSet.getString(3)); // Uncle block number
-                jsonArrayElem.put(resultSet.getInt(4));    // Uncle index in mined block
+                jsonArrayElem.put(resultSet.getString(1)); // Mined block number
+                jsonArrayElem.put(resultSet.getString(2)); // Uncle block number
+                jsonArrayElem.put(resultSet.getInt(3));    // Uncle index in mined block
             }
 
             jsonArrayPage.put(jsonArrayElem);
@@ -206,17 +207,27 @@ public class AddressMinedListRequestHandler implements RequestHandler<AddressMin
             final String blockNumber = resultSet.getString(1);
 
             final BigInteger gasUsed = BigInteger.valueOf(resultSet.getLong(2));
-            final BigInteger gasPrice = new BigInteger(resultSet.getString(3));
+            final BigInteger gasPrice = new BigInteger(resultSet.getBytes(3));
 
-            final BigInteger feeSumBefore = txFeesInBlock.get(blockNumber);
+            final BigInteger txFee = gasPrice.multiply(gasUsed);
 
-            txFeesInBlock.put(blockNumber, feeSumBefore.add(gasPrice.multiply(gasUsed)));
+            addTxFeeOf(blockNumber, txFee, txFeesInBlock);
         }
 
         resultSet.close();
         prpstmt.close();
 
         return txFeesInBlock;
+    }
+
+    private void addTxFeeOf(String blockNumber, BigInteger txFee, HashMap<String, BigInteger> txFeesInBlock) {
+        final BigInteger feeSumBefore = txFeesInBlock.get(blockNumber);
+
+        if (feeSumBefore == null) {
+            txFeesInBlock.put(blockNumber, txFee);
+        } else {
+            txFeesInBlock.put(blockNumber, feeSumBefore.add(txFee));
+        }
     }
 
     private static BigInteger getTxFeeOf(String blockNumber, HashMap<String, BigInteger> txFeesInBlock) {

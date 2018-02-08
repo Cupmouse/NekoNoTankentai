@@ -336,9 +336,10 @@ Blocks View
 }
 
 /*
-  Mined List View
+  Address Mined List View
  */
 
-#mined-list-table {
+#address-mined-list-table {
     width: 100%;
+    margin: 0.5em 0;
 }

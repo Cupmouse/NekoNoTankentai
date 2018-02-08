@@ -79,6 +79,10 @@
     const search_box = document.getElementById('search-box');
     const search_suggestions = document.getElementById('search-suggestion-list');
 
+    const BIGNUMBER_ZERO = new BigNumber(0);
+    const ONE_NUKO = new BigNumber('10').pow('18');
+    const BLOCK_REWARD = new BigNumber('7.5').times(ONE_NUKO);
+
     // Type check
 
     const REGEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -103,7 +107,6 @@
 
     // UI and human friendly values
 
-    const ONE_NUKO = new BigNumber(10).pow(18);
     const DIFF_PREFIXES = ['', 'K', 'M', 'G', 'T', 'P', 'E'];
 
     const generatePagination = (id, buttonLimit, pageNumber, lastPageNumber, linkSupplier) => {
@@ -682,7 +685,7 @@
                 if (splint[3] === 'txs') {
                     return new ViewTransactionList('address-hash', splint[2], pageNumber);
                 } else if (splint[3] === 'mined') {
-                    // TODO
+                    return new ViewAddressMined(splint[2], pageNumber);
                 }
             }
 
@@ -839,7 +842,7 @@
 
             let self = this;
 
-            requestService.connectAndRequest('block-list', ['page', pageNumber], function (response) {
+            requestService.connectAndRequest('block-list', ['page', pageNumber], (response) => {
                 tableDiv.innerHTML = self._genTableContent(response[0]);
 
                 loadingEnd();
@@ -962,7 +965,6 @@
 
 
             let uncles_html = '';
-            let transactions_html = '';
 
             for (const uncle of uncles) {
                 uncles_html += `#${uncle[1]}<br>`;
@@ -1048,7 +1050,7 @@
                 if (beforeLatestBlockNumber === null) {   // If this was the first message
                     /* Initialize block list */
 
-                    self.fillBlockList(new BigNumber(blockNumber));
+                    self.fillBlockList(new BigNumber(number));
 
                     self.blockListInitialized = true;    // Block list successfully initialized, now scroll event will be performed
                 } else {
@@ -1445,6 +1447,106 @@
     }
 
     /* Transaction List View Declaration End */
+
+    /* Address Mined View Declaration Start */
+
+    const ADDRESS_MINED_LIST_PAG_BUTTON_LIMIT = 9;
+
+    class ViewAddressMined extends View {
+
+        constructor(hash, pageNumber) {
+            super();
+            this.hash = hash;
+            this.pageNumber = pageNumber;
+        }
+
+        getTitle() {
+            return `Mined Blocks of Address ${this.hash}`;
+        }
+
+        open() {
+            requestService.connectAndRequest('address-mined-list', [this.hash, this.pageNumber], (content) => {
+                div_contents.innerHTML = this.genHTML(content);
+                addAllAnchorsEvent(div_contents);
+                loadingEnd();
+            });
+        }
+
+        genHTML(content) {
+            if (content === false) {
+                return '<h1>Address did not found</h1>';
+            }
+
+            const page = content[0];
+            const lastPageNumber = content[1];
+            const foundCount = content[2];
+            const serverLimit = content[3];
+
+            let tableBodyHTML = '';
+
+            for (const elem of page) {
+                const type = elem[0];
+                const blockNumber = elem[1];
+
+                if (type === 'BLOCK') {
+                    const numberOfUncles = elem[2];
+                    const txFeeSum = new BigNumber(elem[3]);
+
+                    let rewardSum = new BigNumber(BLOCK_REWARD);
+
+                    let rewardHTML = '';
+
+                    if (numberOfUncles > 0) {
+                        const uncleCitingReward = BLOCK_REWARD.div('32');
+                        rewardHTML += ` +<span title="Reward for citing uncle blocks">${uncleCitingReward.div(ONE_NUKO)}</span>`;
+                        rewardSum = rewardSum.plus(uncleCitingReward);
+                    }
+                    if (txFeeSum.comparedTo(BIGNUMBER_ZERO) > 0) {
+                        rewardHTML += ` +<span title="Sum of fees of transactions which is included in a block">${txFeeSum.div(ONE_NUKO)}</span>`;
+                        rewardSum = rewardSum.plus(txFeeSum);
+                    }
+
+                    if (rewardHTML === '') {
+                        rewardHTML = `<span title="Reward for mining block">${rewardSum.div(ONE_NUKO)}</span>`;
+                    } else {
+                        rewardHTML = `${rewardSum.div(ONE_NUKO)} (<span title="Reward for mining block">${BLOCK_REWARD.div(ONE_NUKO)}</span>${rewardHTML})`;
+                    }
+
+                    tableBodyHTML += `<tr><td><a href="/block/number/${blockNumber}">${blockNumber}</a></td><td></td><td><a href="/block/number/${blockNumber}">${numberOfUncles}</a></td><td>${rewardHTML}</td></tr>`;
+                } else if (type === 'UNCLE_BLOCK') {
+                    const uncleBlockNumber = new BigNumber(elem[2]);
+                    const uncleIndex = elem[3];
+                    const uncleReward = uncleBlockNumber.plus('8').minus(blockNumber).times(BLOCK_REWARD).div('8');
+
+                    tableBodyHTML += `<tr><td><a href="/block/number/${blockNumber}">${blockNumber}</a></td><td><a href="/uncleblock/number/${uncleBlockNumber}">${uncleBlockNumber}</a></td><td></td><td><span title="Reward for mining uncle block">${uncleReward.div(ONE_NUKO)}</span></td></tr>`;
+                } else {
+                    throw new Error('Unknown page element type');
+                }
+            }
+
+            const linkSupplier = (pageNumber) => {
+                return `/address/hash/${this.hash}/mined/${pageNumber}`;
+            };
+
+            let warning;
+            if (foundCount > serverLimit) {
+                warning = '⚠Results are too many and limited by server';
+            } else {
+                warning = '';
+            }
+
+            return `<h1>Mined Blocks by Address ${this.hash}</h1>
+            ${warning}
+            ${generatePagination('address-mined-pagination-top', ADDRESS_MINED_LIST_PAG_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}
+            <table id="address-mined-list-table" class="pure-table pure-table-striped">
+                <thead><tr><th>Block#</th><th>Uncle#</th><th>#Uncle</th><th>Rewards</th></tr></thead>
+                <tbody>${tableBodyHTML}</tbody>
+            </table>
+            ${generatePagination('address-mined-pagination-botton', ADDRESS_MINED_LIST_PAG_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}`;
+        }
+    }
+
+    /* Address Mined View Declaration Start */
 
     /* Initialization Start */
 

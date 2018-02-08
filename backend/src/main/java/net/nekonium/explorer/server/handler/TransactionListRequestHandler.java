@@ -23,6 +23,7 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
     private static final int SEARCH_ELEMENTS_LIMIT = 1000;
     private static final int ELEMENTS_IN_PAGE = 25;
 
+    // TODO tx in blocks list should not have element limit
     @Override
     public TransactionListRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
         HandlerCommon.checkContentIsArray(jsonObject);
@@ -72,7 +73,8 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
             // Find the last page number
 
             final int approximateRowCount = getApproximateRowCount(connection, parameters);
-            final int lastPageNumber = approximateRowCount / ELEMENTS_IN_PAGE + 1;
+            final int limitedRowCount = approximateRowCount <= SEARCH_ELEMENTS_LIMIT ? approximateRowCount : SEARCH_ELEMENTS_LIMIT;
+            final int lastPageNumber = (limitedRowCount - 1) / ELEMENTS_IN_PAGE + 1;
 
             // Determine target page
             final int targetPageNumber;
