@@ -256,6 +256,18 @@
         }
     };
 
+    const humanizeDifficulty = (diffBigNumber) => {
+        let humanReadableDiff;
+        let prefixIndex = 0;
+
+        while ((diffBigNumber = diffBigNumber.div(1000)).comparedTo(1) >= 0) {
+            humanReadableDiff = diffBigNumber;
+            prefixIndex++;
+        }
+
+        return humanReadableDiff.round(2).toString() + DIFF_PREFIXES[prefixIndex];
+    };
+
     const genAddressIconCanvas = (address) => {
         let option = {
             seed: address,
@@ -647,6 +659,38 @@
             }
 
             return new ViewError('Block selection type unknown');
+        } else if (splint[0] === 'uncleblock' && splint.length >= 2) {
+            if ((splint[1] === 'number-index' || splint[1] === 'id-index') && splint.length === 3) {
+                if (!isNonNegativeInt(splint[2])) return new ViewError('Identifier must be integer');
+                if (!isNonNegativeInt(splint[3])) return new ViewError('Index must be integer');
+                let integ = parseInt(splint[2]);
+                let index = parseInt(splint[3]);
+                if (integ < 0) return new ViewError('Identifier must be positive and not 0');
+                // Index can be 0
+
+                return new ViewUncleBlock(splint[1].replace('-', '_and_'), splint[2], integ, index);
+            } else if (splint[1] === 'hash-index') {
+                if (!isBlockHash(splint[2])) {
+                    return new ViewError('Uncle block hash is invalid');
+                }
+                if (!isNonNegativeInt(splint[2])) {
+                    return new ViewError('Uncle index must be integer');
+                }
+                let uncleIndex = parseInt(splint[2]);
+                if (uncleIndex < 1) {
+                    return new ViewError('Uncle index must be positive and not 0');
+                }
+
+                return new ViewUncleBlock('hash_and_index', splint[2], uncleIndex);
+            } else if (splint[1] === 'hash' && splint.length === 2) {
+                if (!isBlockHash(splint[2])) {
+                    return new ViewError('Uncle block hash is invalid');
+                }
+
+                return new ViewUncleBlock('hash', splint[2]);
+            }
+
+            return new ViewError('Unknown uncle block selection type');
         } else if (splint[0] === 'tx' && splint.length === 3) {
             if (splint[1] === 'hash') {
                 if (isTxHash(splint[2])) {
@@ -971,15 +1015,7 @@
             }
 
             let diffBigNumber = new BigNumber(difficulty);
-            let humanReadableDiff;
-            let prefixIndex = 0;
-
-            while ((diffBigNumber = diffBigNumber.div(1000)).comparedTo(1) >= 0) {
-                humanReadableDiff = diffBigNumber;
-                prefixIndex++;
-            }
-
-            const difficultyFormatted = humanReadableDiff.round(2).toString() + DIFF_PREFIXES[prefixIndex];
+            const difficultyFormatted = humanizeDifficulty(diffBigNumber);
             const timestampFormatted = formatUTCUnixEpoch(timestamp);
 
             div_contents.innerHTML =
@@ -1176,6 +1212,87 @@
     }
 
     /* Block View Declaration End */
+
+    /* Uncle Block View Declaration Start */
+
+    class ViewUncleBlock extends View {
+
+        constructor(citedBlockNumber, uncleIndex) {
+            super();
+            this.citedBlockNumber = citedBlockNumber;
+            this.uncleIndex = uncleIndex;
+        }
+
+        getTitle() {
+            return `Uncle block ${this.uncleIndex} of ${this.citedBlockNumber}`;
+        }
+
+        open() {
+            requestService.connectAndRequest('uncleblock', [this.citedBlockNumber, this.uncleIndex], (content) => {
+                div_contents.innerHTML = this.genHTML(content);
+                addAllAnchorsEvent(div_contents);
+                loadingEnd();
+            });
+        }
+
+        genHTML(content) {
+            if (content === false) {
+                div_contents.innerHTML = '<h1>Uncle block did not found</h1>';
+                return;
+            }
+
+            const internalId = content[0];
+            const number = content[1];
+            const hash = content[2];
+            const timestamp = content[3];
+            const miner = content[4];
+            const difficulty = content[5];
+            const gasLimit = content[6];
+            const gasUsed = content[7];
+            const extraData = content[8];
+            const nonce = content[9];
+            const size = content[10];
+
+            const diffBigNumber = new BigNumber(difficulty);
+            const difficultyFormatted = humanizeDifficulty(diffBigNumber);
+            const timestampFormatted = formatUTCUnixEpoch(timestamp);
+
+            div_contents.innerHTML =
+                `<h1>Block #${number}</h1>
+                    <div >
+                        <div class="block-time">
+                            <canvas id="canvas-block-time-clock" class="block-time-clock"
+                                title="${timestampFormatted}"
+                                height="200px" width="200px"></canvas>
+                        </div>
+                        <div class="block-about">
+                            <span class="mini-caption">Hash</span><span class="captioned-text">${hash}</span>
+                            <span class="mini-caption">Miner</span><span class="captioned-text">${miner}</span>
+                            <span class="mini-caption">Difficulty</span><span class="captioned-text" title="${difficulty}">${difficultyFormatted}</span>
+                            <span class="mini-caption">Gas</span>
+                            <span class="captioned-text">
+                            <span title="The amount of gas used in this block">${gasUsed}</span> / <span title="The upper limit of gas could be used in this block">${gasLimit}</span>
+                            </span>
+                            <span class="mini-caption">Extra Data</span><span class="captioned-text">${extraData}</span>
+                            <span class="mini-caption">Nonce</span><span class="captioned-text">${nonce}</span>
+                            <span class="mini-caption">Size</span><span class="captioned-text">${size} bytes</span>
+                            <span class="mini-caption">Internal Id</span><span class="captioned-text">${internalId}</span>
+                        </div>
+                    </div>
+                    <h2><a href="/block/${this.targetKey}/${this.targetValue}/txs/1">Transaction(s)</a></h2>
+                    <div>
+                        <h2>${uncles.length} Uncle(s)</h2>
+
+                        ${uncles_html}
+                    </div>`;
+
+            const cc = document.getElementById('canvas-block-time-clock').getContext('2d');
+            drawClock(cc, timestamp);
+        }
+
+    }
+
+    /* Uncle Block View Declaration End*/
 
     /* Address View Declaration Start */
 

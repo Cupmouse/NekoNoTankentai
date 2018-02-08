@@ -17,6 +17,9 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.UncleRequest> {
 
+    public static final String UNCLE_COLUMNS = "internal_id, number, NEKH(hash), UNIX_TIMESTAMP(timestamp), NEKH(miner), " +
+            "difficulty, gas_limit, gas_used, NEKH(extra_data), nonce, size";
+
     @Override
     public UncleRequest parseParameters(JSONObject jsonObject) throws InvalidRequestException {
         checkContentIsArray(jsonObject);
@@ -113,6 +116,24 @@ public class UncleRequestHandler implements RequestHandler<UncleRequestHandler.U
                 }
             }
         }
+    }
+
+    private static JSONObject parseUncleJSON(ResultSet resultSet) throws SQLException {
+        final JSONObject jsonObjectUncle = new JSONObject();
+
+        int n = 0;
+        jsonObjectUncle.put("internal_id"   , resultSet.getString(++n));
+        jsonObjectUncle.put("number"        , resultSet.getString(++n));
+        jsonObjectUncle.put("hash"          , resultSet.getString(++n));
+        jsonObjectUncle.put("timestamp"     , resultSet.getLong(++n));
+        jsonObjectUncle.put("miner"         , resultSet.getString(++n));
+        jsonObjectUncle.put("difficulty"    , resultSet.getString(++n));
+        jsonObjectUncle.put("gas_limit"     , resultSet.getLong(++n));
+        jsonObjectUncle.put("gas_used"      , resultSet.getLong(++n));
+        jsonObjectUncle.put("extra_data"    , resultSet.getString(++n));
+        jsonObjectUncle.put("nonce"         , resultSet.getString(++n));
+        jsonObjectUncle.put("size"          , resultSet.getInt(++n));
+        return jsonObjectUncle;
     }
 
     static class UncleRequest {
