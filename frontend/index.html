@@ -537,6 +537,19 @@
     let searchStateId = 0;
     let searchTimeoutId;
 
+    const SEARCH_ELEMENT_TYPES = {
+        BLOCK_NUMBER: 'BLOCK_NUMBER',
+        BLOCK_HASH: 'BLOCK_HASH',
+        BLOCK_ID: 'BLOCK_ID',
+        UNCLE_NUMBER: 'UNCLE_NUMBER',
+        UNCLE_HASH: 'UNCLE_HASH',
+        UNCLE_ID: 'UNCLE_ID',
+        TX_HASH: 'TX_HASH',
+        TX_ID: 'TX_ID',
+        ADDRESS_HASH: 'ADDRESS_HASH',
+        ADDRESS_ID: 'ADDRESS_ID'
+    };
+
     search_box.addEventListener('input', function () {
         // Registering search box input event
 
@@ -564,30 +577,54 @@
                 }
 
                 let suggestionHTML = "";
-                for (let i = 0; i < content.length; i++) {
-                    let link_label;
 
-                    switch (content[i][0]) {
-                        case 'block_number':        link_label = "Block Number"; break;
-                        case 'block_hash':          link_label = "Block"; break;
-                        case 'transaction_hash':    link_label = "Transaction"; break;
-                        case 'normal_address':      link_label = "Address"; break;
-                        case 'contract_address':    link_label = "Contract Address"; break;
+                for (let i = 0; i < content.length; i++) {
+                    const elem = content[i];
+                    let elemHTML;
+
+                    switch (elem[0]) {
+                        case SEARCH_ELEMENT_TYPES.BLOCK_NUMBER:
+                            const blockNumber = elem[1];
+                            elemHTML = `<a href="/block/number/${blockNumber}">Block Number #${blockNumber}</a>`;
+                            break;
+                        case SEARCH_ELEMENT_TYPES.BLOCK_HASH:
+                            const blockHash = elem[1];
+                            elemHTML = `<a href="/block/hash/${blockHash}">Block ${shorten(blockHash, 10)}</a>`;
+                            break;
+                        case SEARCH_ELEMENT_TYPES.TX_HASH:
+                            const txHash = elem[1];
+                            elemHTML = `<a href="/transaction/hash/${txHash}">Tx ${shorten(txHash, 10)}</a>`;
+                            break;
+                        case SEARCH_ELEMENT_TYPES.ADDRESS_HASH:
+                            const addressType = elem[1];
+                            const addressHash = elem[2];
+                            const addressAlias = elem[3];
+
+                            let addressTypeName;
+
+                            if (addressType === ADDRESS_TYPE.NORMAL) {
+                                addressTypeName = 'Normal';
+                            } else if (addressType === ADDRESS_TYPE.CONTRACT) {
+                                addressTypeName = 'Contract';
+                            } else {
+                                throw new Error('Unknown address type');
+                            }
+
+                            elemHTML = `<a href="/address/hash/${addressHash}">${addressTypeName} Address ${shorten(addressHash, 10)}</a>`;
+                            break;
                     }
 
-                    link_label += " " + content[i][1];
-
-                    suggestionHTML += `<li>${link_label}</li>`;
+                    suggestionHTML += `<li>${elemHTML}</li>`;
                 }
 
                 search_suggestions.innerHTML = suggestionHTML;
+                addAllAnchorsEvent(search_suggestions);
             });
         }, 250);
     });
 
     document.getElementById('search-form').addEventListener('submit', function (event) { // Event listener for search confirm
         event.preventDefault();
-        alert("is it");
         return false;
     });
 
@@ -1701,8 +1738,8 @@
                         const targetAddr = elem[5];
                         const value = new BigNumber(elem[6]);
 
-                        const txTypeHumanized = ViewTransactionList.humanizeTxType(txType);
-                        const txTypeIcon = ViewTransactionList.getIconFor(txType);
+                        const txTypeHumanized = humanizeTxType(txType);
+                        const txTypeIcon = getTxIconFor(txType);
                         const cssTypeCode = txType.toLowerCase().replace('_', '-');
                         const capLoweredValue = this.targetValue.toLowerCase();
                         const fromAddrHTML = (fromAddr === capLoweredValue) ? 'This address' : `<a href="/address/hash/${fromAddr}">${shorten(fromAddr, 20)}</a>`;
