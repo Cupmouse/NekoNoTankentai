@@ -165,3 +165,6 @@ CREATE TABLE `balance_changes` (
   COLLATE='utf8_general_ci'
   ENGINE=InnoDB
 ;
+
+GRANT SELECT, INSERT, UPDATE ON `explorer`.* TO 'explorer-backend'@'localhost';
+GRANT EXECUTE ON FUNCTION `explorer`.`nekh` TO 'explorer-backend'@'localhost';

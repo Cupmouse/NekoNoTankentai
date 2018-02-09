@@ -74,6 +74,8 @@
 <script type="application/javascript">
     /* Common Declaration Start */
     const SITE_TITLE = 'Neko no Tankentai';
+    const WS_URL_BLOCK_NUMBER = 'wss://explorerws.nekonium.net/block-number';
+    const WS_URL_REQUEST = 'wss://explorerws.nekonium.net/request';
 
     const div_contents = document.getElementById('contents');
     const search_box = document.getElementById('search-box');
@@ -412,7 +414,7 @@
         }
 
         startConnectingAndKeep() {
-            this.websocket = new WebSocket('ws://localhost:8080/block-number');
+            this.websocket = new WebSocket(WS_URL_BLOCK_NUMBER);
 
             this.websocket.onclose = function () {  // Try to reconnect if connection is lost
                 console.log("Connection closed, retrying");
@@ -454,7 +456,7 @@
             this.connecting = true;
 
             this.callbacks = new Map(); // Create map for storing a nonce and callbacks pair
-            this.websocket = new WebSocket('ws://localhost:8080/request');  // Connect to the request websocket server
+            this.websocket = new WebSocket(WS_URL_REQUEST);  // Connect to the request websocket server
 
             let self = this;
 
