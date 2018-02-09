@@ -3,7 +3,12 @@ package net.nekonium.explorer.server.handler;
 import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
+import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.Hash;
+import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.HashAndIndex;
+import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.InternalIdAndIndex;
+import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.NumberAndIndex;
 import net.nekonium.explorer.util.FormatValidateUtil;
+import net.nekonium.explorer.util.NonNullPair;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -17,9 +22,10 @@ import static net.nekonium.explorer.server.handler.HandlerCommon.*;
 
 public class TransactionRequestHandler implements RequestHandler<TransactionRequestHandler.TransactionRequest> {
 
-    public static final String TRANSACTION_NONCONDITION = "SELECT transactions.internal_id, transactions.block_id, blocks.number, transactions.`index`, NEKH(transactions.hash), " +
+    private static final String TRANSACTION_NONCONDITION =
+            "SELECT transactions.internal_id, transactions.block_id, blocks.number, transactions.`index`, NEKH(transactions.hash), " +
             "NEKH(A1.address), NEKH(A2.address), NEKH(A3.address), transactions.`value`, transactions.gas_provided, " +
-            "transactions.gas_used, transactions.gas_price, transactions.nonce, NEKH(transactions.input) " +
+            "transactions.gas_used, transactions.gas_price, transactions.nonce, NEKH(transactions.input), transactions.input = 0, blocks.forked " +
             "FROM transactions " +
             "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
             "LEFT JOIN addresses AS A1 ON A1.internal_id = transactions.from_id " +
@@ -36,7 +42,21 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         checkHasParameter(jsonArrayContent);
         final String typeStr = getString(jsonArrayContent, 0, "type");
 
-        if (typeStr.equals("number_and_index")) {
+        if (typeStr.equals("hash-and-index")) {
+
+            checkParamCount(jsonArrayContent, 3);
+
+            final String blockHash = getString(jsonArrayContent, 1, "blockHash");
+
+            if (!FormatValidateUtil.isValidBlockHash(blockHash)) {
+                throw new InvalidRequestException("Invalid block hash");
+            }
+
+            final int txIndex = getUnsignedInt(jsonArrayContent, 2, "txIndex");
+
+            return new HashAndIndex(blockHash, txIndex);
+
+        } else if (typeStr.equals("number-and-index")) {
 
             checkParamCount(jsonArrayContent, 3);
 
@@ -44,8 +64,8 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
-            return new TransactionRequest.NumberAndIndex(number, index);
-        } else if (typeStr.equals("id_and_index")) {
+            return new NumberAndIndex(number, index);
+        } else if (typeStr.equals("id-and-index")) {
 
             checkParamCount(jsonArrayContent, 3);
 
@@ -54,7 +74,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
 
-            return new TransactionRequest.InternalIdAndIndex(internalId, index);
+            return new InternalIdAndIndex(internalId, index);
         } else if (typeStr.equals("hash")) {
 
             checkParamCount(jsonArrayContent, 2);
@@ -66,7 +86,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
                 throw new InvalidRequestException("Invalid transaction hash");
             }
 
-            return new TransactionRequest.Hash(hash.substring(2));
+            return new Hash(hash.substring(2));
         } else {
             throw new InvalidRequestException("Unknown type");
         }
@@ -83,30 +103,33 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final PreparedStatement prpstmt;
 
-            if (parameters instanceof TransactionRequest.NumberAndIndex) {
+            if (parameters instanceof HashAndIndex) {
+
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.hash = UNHEX(?) AND transactions.`index` = ? AND blocks.forked = 0 LIMIT 1");
+            } else if (parameters instanceof NumberAndIndex) {
                 // Number and index
 
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.forked = 0 AND blocks.number = ? AND transactions.index = ? LIMIT 1");
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.number = ? AND transactions.index = ? AND blocks.forked = 0 LIMIT 1");
 
-                final TransactionRequest.NumberAndIndex casted = (TransactionRequest.NumberAndIndex) parameters;
+                final NumberAndIndex casted = (NumberAndIndex) parameters;
 
                 prpstmt.setString(1, casted.number.toString());
                 prpstmt.setInt(2, casted.index);
-            } else if (parameters instanceof TransactionRequest.InternalIdAndIndex) {
+            } else if (parameters instanceof InternalIdAndIndex) {
                 // Internal id and index, forked block may return
 
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.block_id = ? LIMIT 1");
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.block_id = ? AND transactions.`index` = ? LIMIT 1");
 
-                final TransactionRequest.InternalIdAndIndex casted = (TransactionRequest.InternalIdAndIndex) parameters;
+                final InternalIdAndIndex casted = (InternalIdAndIndex) parameters;
 
                 prpstmt.setString(1, casted.internalId.toString());
                 prpstmt.setLong(2, casted.index);
 
-            } else if (parameters instanceof TransactionRequest.Hash) {
+            } else if (parameters instanceof Hash) {
                 // Hash
 
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.forked = 0 AND transactions.hash = UNHEX(?) LIMIT 1");
-                prpstmt.setString(1, ((TransactionRequest.Hash) parameters).hash);
+                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.hash = UNHEX(?) AND blocks.forked = 0 LIMIT 1");
+                prpstmt.setString(1, ((Hash) parameters).hash);
 
             } else {
                 throw new InvalidRequestException("Key type unknown");
@@ -115,8 +138,8 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
             ResultSet resultSet = prpstmt.executeQuery();   // Execute query
 
             if (resultSet.next()) {
-                JSONObject jsonObjectTx = new JSONObject();
-                writeTx(jsonObjectTx,
+                JSONArray jsonArrayTx = new JSONArray();
+                writeTx(jsonArrayTx,
                         resultSet.getLong(1),
                         resultSet.getLong(2),
                         resultSet.getLong(3),
@@ -130,10 +153,11 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
                         resultSet.getLong(11),
                         new BigInteger(resultSet.getBytes(12)),
                         resultSet.getString(13),
-                        resultSet.getString(14)
+                        resultSet.getString(14),
+                        resultSet.getBoolean(15)
                 );
 
-                return jsonObjectTx;    // Return result
+                return jsonArrayTx;    // Return result
             } else {
                 return false;   // If a transaction was not found, false returns
             }
@@ -148,45 +172,27 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         }
     }
 
-    private void writeTx(final JSONObject jsonObject,
+    private void writeTx(final JSONArray jsonArray,
                          final long internalId, final long blockId, final long blockNumber, final int index, final String hash,
                          final String from, final String to, final String contract, final BigInteger value,
-                         final long gasProvided, final long gasUsed, final BigInteger gasPrice, final String nonce, final String input) {
+                         final long gasProvided, final long gasUsed, final BigInteger gasPrice, final String nonce, final String input, boolean emptyInput) throws InvalidRequestException {
         // This method is separated because I can assure every parameters are the type it is supposed to be
-        jsonObject.put("internal_id",   internalId);
-        jsonObject.put("block_id",      blockId);
-        jsonObject.put("block_number",  blockNumber);
-        jsonObject.put("index",         index);
-        jsonObject.put("hash",          hash);
-        jsonObject.put("from",          from);
 
-        TransactionType txType;
+        final NonNullPair<TransactionType, String> pair = HandlerCommon.determineTxTypeAndTargetAddress(to, contract, emptyInput);
 
-        if (to == null) { // to == null means contract creation transaction
-            txType = TransactionType.CONTRACT_CREATION;
-
-            jsonObject.put("contract_address", contract);
-        } else {
-            if (input.equals("0x")) {
-                // Input is empty, this should be normal nuko sending tx
-                txType = TransactionType.SEND;
-            } else {
-                // Assume contract calling
-                txType = TransactionType.CONTRACT_CALL;
-            }
-            txType = TransactionType.SEND;
-
-            jsonObject.put("to", to);
-            jsonObject.put("value", value); // Contract calls can also have value to send
-        }
-
-        jsonObject.put("type",           txType.name().toLowerCase());
-
-        jsonObject.put("gas_provided",  gasProvided);
-        jsonObject.put("gas_used",      gasUsed);
-        jsonObject.put("gas_price",     gasPrice);
-        jsonObject.put("nonce",         nonce);
-        jsonObject.put("input",         input);
+        jsonArray.put(pair.getA().toString());
+        jsonArray.put(internalId);
+        jsonArray.put(blockId);
+        jsonArray.put(blockNumber);
+        jsonArray.put(index);
+        jsonArray.put(hash);
+        jsonArray.put(from);
+        jsonArray.put(pair.getB());
+        jsonArray.put(gasProvided);
+        jsonArray.put(gasUsed);
+        jsonArray.put(gasPrice);
+        jsonArray.put(nonce);
+        jsonArray.put(input);
     }
 
     static class TransactionRequest {
@@ -195,6 +201,16 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             private Hash(String hash) {
                 this.hash = hash;
+            }
+        }
+
+        static class HashAndIndex extends TransactionRequest {
+            private final String blockHash;
+            private final int txIndex;
+
+            private HashAndIndex(String blockHash, int txIndex) {
+                this.blockHash = blockHash;
+                this.txIndex = txIndex;
             }
         }
 
