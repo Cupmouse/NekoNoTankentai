@@ -161,11 +161,11 @@
         }
 
         _buttonClicked(event) {
-            if (event.target.tagName !== 'BUTTON') {
+            if (event.txKey.tagName !== 'BUTTON') {
                 return;
             }
 
-            switch (event.target.innerText) {
+            switch (event.txKey.innerText) {
                 case '<<':
                     this._callListener(1);  // Go all the way back to page 1
                     break;
@@ -180,7 +180,7 @@
                     break; // Go to the next page
                 default:
                     // Assume all button's innnerText is not malformed, treat it as a target page number
-                    this._callListener(parseInt(event.target.innerText, 10)); // Jump to the target page
+                    this._callListener(parseInt(event.txKey.innerText, 10)); // Jump to the target page
                     break;
             }
         }

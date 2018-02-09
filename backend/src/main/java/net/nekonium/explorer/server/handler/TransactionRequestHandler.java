@@ -4,9 +4,6 @@ import net.nekonium.explorer.server.ExplorerServer;
 import net.nekonium.explorer.server.InvalidRequestException;
 import net.nekonium.explorer.server.RequestHandler;
 import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.Hash;
-import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.HashAndIndex;
-import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.InternalIdAndIndex;
-import net.nekonium.explorer.server.handler.TransactionRequestHandler.TransactionRequest.NumberAndIndex;
 import net.nekonium.explorer.util.FormatValidateUtil;
 import net.nekonium.explorer.util.NonNullPair;
 import org.json.JSONArray;
@@ -42,40 +39,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         checkHasParameter(jsonArrayContent);
         final String typeStr = getString(jsonArrayContent, 0, "type");
 
-        if (typeStr.equals("hash-and-index")) {
-
-            checkParamCount(jsonArrayContent, 3);
-
-            final String blockHash = getString(jsonArrayContent, 1, "blockHash");
-
-            if (!FormatValidateUtil.isValidBlockHash(blockHash)) {
-                throw new InvalidRequestException("Invalid block hash");
-            }
-
-            final int txIndex = getUnsignedInt(jsonArrayContent, 2, "txIndex");
-
-            return new HashAndIndex(blockHash, txIndex);
-
-        } else if (typeStr.equals("number-and-index")) {
-
-            checkParamCount(jsonArrayContent, 3);
-
-            final BigInteger number = getNonNegativeBigInteger(jsonArrayContent, 1, "number");
-
-            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
-
-            return new NumberAndIndex(number, index);
-        } else if (typeStr.equals("id-and-index")) {
-
-            checkParamCount(jsonArrayContent, 3);
-
-            checkHasString(jsonArrayContent, 1, "internal_id");
-            final BigInteger internalId = parseNonNegativeBigInteger(jsonArrayContent.getString(1), "internal_id");
-
-            final int index = parseUnsignedInt(jsonArrayContent.get(2), "index");
-
-            return new InternalIdAndIndex(internalId, index);
-        } else if (typeStr.equals("hash")) {
+        if (typeStr.equals("hash")) {
 
             checkParamCount(jsonArrayContent, 2);
             checkHasString(jsonArrayContent, 1, "hash");
@@ -103,31 +67,7 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             final PreparedStatement prpstmt;
 
-            if (parameters instanceof HashAndIndex) {
-
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.hash = UNHEX(?) AND transactions.`index` = ? AND blocks.forked = 0 LIMIT 1");
-            } else if (parameters instanceof NumberAndIndex) {
-                // Number and index
-
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "blocks.number = ? AND transactions.index = ? AND blocks.forked = 0 LIMIT 1");
-
-                final NumberAndIndex casted = (NumberAndIndex) parameters;
-
-                prpstmt.setString(1, casted.number.toString());
-                prpstmt.setInt(2, casted.index);
-            } else if (parameters instanceof InternalIdAndIndex) {
-                // Internal id and index, forked block may return
-
-                prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.block_id = ? AND transactions.`index` = ? LIMIT 1");
-
-                final InternalIdAndIndex casted = (InternalIdAndIndex) parameters;
-
-                prpstmt.setString(1, casted.internalId.toString());
-                prpstmt.setLong(2, casted.index);
-
-            } else if (parameters instanceof Hash) {
-                // Hash
-
+            if (parameters instanceof Hash) {
                 prpstmt = connection.prepareStatement(TRANSACTION_NONCONDITION + "transactions.hash = UNHEX(?) AND blocks.forked = 0 LIMIT 1");
                 prpstmt.setString(1, ((Hash) parameters).hash);
 
@@ -188,9 +128,10 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
         jsonArray.put(hash);
         jsonArray.put(from);
         jsonArray.put(pair.getB());
+        jsonArray.put(value.toString());
         jsonArray.put(gasProvided);
         jsonArray.put(gasUsed);
-        jsonArray.put(gasPrice);
+        jsonArray.put(gasPrice.toString());
         jsonArray.put(nonce);
         jsonArray.put(input);
     }
@@ -201,36 +142,6 @@ public class TransactionRequestHandler implements RequestHandler<TransactionRequ
 
             private Hash(String hash) {
                 this.hash = hash;
-            }
-        }
-
-        static class HashAndIndex extends TransactionRequest {
-            private final String blockHash;
-            private final int txIndex;
-
-            private HashAndIndex(String blockHash, int txIndex) {
-                this.blockHash = blockHash;
-                this.txIndex = txIndex;
-            }
-        }
-
-        static class NumberAndIndex extends TransactionRequest {
-            private final BigInteger number;
-            private final int index;
-
-            private NumberAndIndex(BigInteger number, int index) {
-                this.number = number;
-                this.index = index;
-            }
-        }
-
-        static class InternalIdAndIndex extends TransactionRequest {
-            private final BigInteger internalId;
-            private final int index;
-
-            private InternalIdAndIndex(BigInteger internalId, int index) {
-                this.internalId = internalId;
-                this.index = index;
             }
         }
     }

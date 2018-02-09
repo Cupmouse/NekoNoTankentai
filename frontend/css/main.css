@@ -67,6 +67,10 @@ body {
     color: #565d64;
 }
 
+footer {
+    margin-top: 1em;
+}
+
 .text-selectable {
     /* Enable text selection */
     -moz-user-select: text;
@@ -342,4 +346,54 @@ Blocks View
 #address-mined-list-table {
     width: 100%;
     margin: 0.5em 0;
+}
+
+/*
+ Trancation View
+ */
+
+#tx-from-portrait {
+    float: left;
+    margin-right: 1em;
+}
+#tx-from-text {
+    float: left;
+    text-align: left;
+}
+#tx-target-portrait {
+    float: right;
+    margin-left: 1em;
+}
+#tx-target-text {
+    float: right;
+    text-align: right;
+}
+
+
+.tx-address-hex {
+    margin: 0;
+    font-size: 2em;
+}
+
+#tx-middle {
+    text-align: center;
+}
+
+#tx-type {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+#tx-type-symbol {
+    margin: 0;
+    font-size: 5em;
+}
+
+#tx-value {
+    margin: 0;
+    font-size: 2em;
+}
+
+#tx-fee {
+    margin: 0;
 }

@@ -658,12 +658,16 @@
 
         if (splint[0] === 'block' && splint.length >= 2) {
             return _selectViewBlock(splint.slice(1));
-        } else if (splint[0] === 'tx' && splint.length === 3) {
+        } else if (splint[0] === 'transaction' && splint.length === 3) {
             if (splint[1] === 'hash') {
-                if (isTxHashString(splint[2])) {
-                    // TODO
+                if (!isTxHashString(splint[2])) {
+                    throw new Error('Invalid transaction hash');
                 }
+
+                return new ViewTransaction('hash', splint[2]);
             }
+
+            throw new Error('Invalid transaction selecting type');
         } else if (splint[0] === 'address') {
             // _selectViewAddress(path.slice(1));
 
@@ -787,7 +791,7 @@
         }
 
         for (let link of anchors) {
-            link.addEventListener('click', function (event) {
+            link.addEventListener('click', (event) => {
                 event.preventDefault(); // This would prevent browser to actually move to target url
 
                 const href = event.target.getAttribute('href');
@@ -1419,174 +1423,6 @@
 
     /* Address View Declaration End */
 
-    /* Transaction List View Declaration Start */
-
-    const TX_LIST_PAGINATION_BUTTON_LIMIT = 9;
-
-    const TRANSACTION_TYPE = {
-        SEND: 'SEND',
-        CONTRACT_CREATION: 'CONTRACT_CREATION',
-        CONTRACT_CALL: 'CONTRACT_CALL'
-    };
-
-    class ViewTransactionList extends View {
-
-        constructor(key, value, pageNumber) {
-            super();
-            this.targetKey = key;
-            this.targetValue = value;
-            this.pageNumber = pageNumber;
-        }
-
-        getTitle() {
-            return `Page ${this.pageNumber} Txs of ${this.targetKey.substr(0, this.targetKey.indexOf('-'))} ${this.targetValue}`;
-        }
-
-        open() {
-            const baseURL = `/${this.targetKey.replace('-', '/')}/${this.targetValue}`;
-
-            const linkSupplier = (pageNumber) => {
-                return `${baseURL}/txs/${pageNumber}`;
-            };
-
-            requestService.connectAndRequest('transaction-list', [this.targetKey, this.targetValue, this.pageNumber], (content) => {
-                const pageReq = content[0];
-                const lastPageNumber = content[1];
-                const discoveredRows = content[2];
-                const serverRowLimit = content[3];
-
-                if (this.targetKey === 'address-hash') {
-                    let tableBodyHTML = '';
-
-                    for (const elem of pageReq) {
-                        const txType = elem[0];
-                        const txHash = elem[1];
-                        const blockNumber = elem[2];
-                        const timestamp = elem[3];
-                        const fromAddr = elem[4];
-                        const targetAddr = elem[5];
-                        const value = new BigNumber(elem[6]);
-
-                        const txTypeHumanized = ViewTransactionList.humanizeTxType(txType);
-                        const txTypeIcon = ViewTransactionList.getIconFor(txType);
-                        const cssTypeCode = txType.toLowerCase().replace('_', '-');
-                        const capLoweredValue = this.targetValue.toLowerCase();
-                        const fromAddrHTML = (fromAddr === capLoweredValue) ? 'This address' : `<a href="/address/hash/${fromAddr}">${shorten(fromAddr, 20)}</a>`;
-                        const targetAddrHTML = (targetAddr === capLoweredValue) ? 'This address' : `<a href="/address/hash/${targetAddr}">${shorten(targetAddr, 20)}</a>`;
-                        const valueWithDecimal = value.div(ONE_NUKO);
-
-                        tableBodyHTML += `<tr><td><a href="/block/number/${blockNumber}">${blockNumber}</a> (${humanizeUnixEpochDiffFromNow(timestamp)})</td>
-<td><a href="/transaction/hash/${txHash}"><span class="tx-list-hexprefix tx-list-highlight-${cssTypeCode}">0x</span>${shorten(txHash.substr(2), 15)}</a></td>
-<td>${txTypeHumanized}</td><td><span title="${valueWithDecimal} NUKO">${valueWithDecimal.round(2)} NUKO</span></td><td>${fromAddrHTML}</td>
-<td><span class="tx-list-coloring-${cssTypeCode}">${txTypeIcon}</span>${targetAddrHTML}</td></tr>`;
-                    }
-
-                    let rowCountHTML;
-                    let warning;
-                    if (discoveredRows > serverRowLimit) {
-                        rowCountHTML = `${serverRowLimit}+`;
-                        warning = "<p>⚠This address's transactions are too many and results are limited by server</p>";
-                    } else {
-                        rowCountHTML = discoveredRows.toString();
-                        warning = '';
-                    }
-
-                    div_contents.innerHTML = `<h1>Address <a href="${baseURL}">${this.getSourceParentName()}</a>'s transactions (${rowCountHTML})</h1>
-        ${warning}
-        ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}
-        <table id="tx-list-table" class="pure-table pure-table-striped">
-            <thead><tr><th>Time</th><th>Hash</th><th>Type</th><th>Value</th><th>From</th><th>Target</th></tr></thead>
-            <tbody>
-                ${tableBodyHTML}
-            </tbody>
-        </table>
-    ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}`;
-
-                } else if (this.targetKey === 'block-hash' || this.targetKey === 'block-number' || this.targetKey === 'block-id') {
-
-                    let tableBodyHTML = '';
-
-                    for (const elem of pageReq) {
-                        const txType = elem[0];
-                        const txHash = elem[1];
-                        const fromAddr = elem[2];
-                        const targetAddr = elem[3];
-                        const value = new BigNumber(elem[4]);
-
-                        const txTypeHumanized = ViewTransactionList.humanizeTxType(txType);
-                        const txTypeIcon = ViewTransactionList.getIconFor(txType);
-                        const cssTypeCode = txType.toLowerCase().replace('_', '-');
-                        const fromAddrHTML = `<a href="/address/hash/${fromAddr}">${shorten(fromAddr, 20)}</a>`;
-                        const targetAddrHTML = `<a href="/address/hash/${targetAddr}">${shorten(targetAddr, 20)}</a>`;
-                        const valueWithDecimal = value.div(ONE_NUKO);
-
-                        tableBodyHTML += `<tr><td><a href="/transaction/hash/${txHash}"><span class="tx-list-hexprefix tx-list-highlight-${cssTypeCode}">0x</span>${shorten(txHash.substr(2), 15)}</a></td>
-<td>${txTypeHumanized}</td><td><span title="${valueWithDecimal} NUKO">${valueWithDecimal.round(2)} NUKO</span></td><td>${fromAddrHTML}</td>
-<td><span class="tx-list-coloring-${cssTypeCode}">${txTypeIcon}</span>${targetAddrHTML}</td></tr>`;
-                    }
-
-                    let rowCountHTML;
-                    if (discoveredRows > serverRowLimit) {
-                        rowCountHTML = `${serverRowLimit}+`;
-                    } else {
-                        rowCountHTML = discoveredRows.toString();
-                    }
-
-                    div_contents.innerHTML = `<h1>Transactions in Block <a href="${baseURL}">${this.getSourceParentName()}</a> (${rowCountHTML})</h1>
-        ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}
-        <table id="tx-list-table" class="pure-table pure-table-striped">
-            <thead><tr><th>Hash</th><th>Type</th><th>Value</th><th>From</th><th>Target</th></tr></thead>
-            <tbody>
-                ${tableBodyHTML}
-            </tbody>
-        </table>
-    ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}`;
-
-                } else {
-                    throw new Error('Unknown key type');
-                }
-
-                addAllAnchorsEvent(div_contents);
-
-                loadingEnd();
-            });
-        }
-
-        getSourceParentName() {
-            if (this.targetKey.split('-')[1] === 'number') {
-                return `#${this.targetValue}`;
-            }
-
-            return this.targetValue;
-        }
-
-        static humanizeTxType(txType) {
-            if (txType === TRANSACTION_TYPE.SEND) {
-                return 'Transfer';
-            } else if (txType === TRANSACTION_TYPE.CONTRACT_CREATION) {
-                return 'Create';
-            } else if (txType === TRANSACTION_TYPE.CONTRACT_CALL) {
-                return 'Call';
-            }
-
-            return null;
-        }
-
-        static getIconFor(txType) {
-            if (txType === TRANSACTION_TYPE.SEND) {
-                return '➡&#xFE0E;';
-            } else if (txType === TRANSACTION_TYPE.CONTRACT_CREATION) {
-                return '💥&#xFE0E;';
-            } else if (txType === TRANSACTION_TYPE.CONTRACT_CALL) {
-                return '📣&#xFE0E;';
-            }
-
-            return null;
-        }
-    }
-
-    /* Transaction List View Declaration End */
-
     /* Address Mined View Declaration Start */
 
     const ADDRESS_MINED_LIST_PAG_BUTTON_LIMIT = 9;
@@ -1689,15 +1525,277 @@
 
     /* Transaction View Declaration Start */
 
+    const TRANSACTION_TYPE = {
+        SEND: 'SEND',
+        CONTRACT_CREATION: 'CONTRACT_CREATION',
+        CONTRACT_CALL: 'CONTRACT_CALL'
+    };
+
+    const humanizeTxType  = (txType) => {
+        if (txType === TRANSACTION_TYPE.SEND) {
+            return 'Transfer';
+        } else if (txType === TRANSACTION_TYPE.CONTRACT_CREATION) {
+            return 'Create';
+        } else if (txType === TRANSACTION_TYPE.CONTRACT_CALL) {
+            return 'Call';
+        }
+
+        return null;
+    };
+
+    const getTxIconFor = (txType) => {
+        if (txType === TRANSACTION_TYPE.SEND) {
+            return '➡&#xFE0E;';
+        } else if (txType === TRANSACTION_TYPE.CONTRACT_CREATION) {
+            return '💥&#xFE0E;';
+        } else if (txType === TRANSACTION_TYPE.CONTRACT_CALL) {
+            return '📣&#xFE0E;';
+        }
+
+        return null;
+    };
+
     class ViewTransaction extends View {
 
-        constructor(type, ) {
+        constructor(requestType, txKey) {
             super();
-            this.
+            this.requestType = requestType;
+            this.txKey = txKey;
+        }
+
+        getTitle() {
+            return `Transaction ${this.txKey}`;
+        }
+
+        open() {
+            requestService.connectAndRequest('transaction', [this.requestType, this.txKey], (content) => {
+                this.writeContent(content);
+                loadingEnd();
+            });
+        }
+
+        writeContent(content) {
+            let i = 0;
+            const txType = content[i++];
+            const internalId = content[i++];
+            const blockId = content[i++];
+            const blockNumber = content[i++];
+            const txIndex = content[i++];
+            const txHash = content[i++];
+            const fromAddress = content[i++];
+            const targetAddress = content[i++];
+            const value = new BigNumber(content[i++]);
+            const gasProvided = content[i++];
+            const gasUsed = content[i++];
+            const gasPrice = new BigNumber(content[i++]);
+            const nonce = content[i++];
+            const input = content[i++];
+
+            const txFee = gasPrice.times(gasUsed);
+
+            div_contents.innerHTML = `<div class="pure-g">
+            <div class="pure-u-1 word-break-all"><h1>Transaction ${txHash}</h1></div>
+            <div id="tx-from" class="pure-u-2-5">
+                <canvas id="tx-from-portrait"></canvas>
+                <div id="tx-from-text">
+                    <p class="tx-address-hex">From</p>
+                    <p class="tx-address-hex word-break-all"><a href="/address/hash/${fromAddress}">${shorten(fromAddress, 22)}</a></p>
+                </div>
+            </div>
+            <div id="tx-middle" class="pure-u-1-5">
+                <p id="tx-type" class="word-break-all">${humanizeTxType(txType)}</p>
+                <p id="tx-type-symbol">${getTxIconFor(txType)}</p>
+                <p id="tx-value" class="word-break-all">${value.div(ONE_NUKO).round(2)} NUKO</p>
+                <p id="tx-fee" class="word-break-all">Fee: ${txFee.div(ONE_NUKO)} NUKO</p>
+
+            </div>
+            <div id="tx-target" class="pure-u-2-5">
+                <canvas id="tx-target-portrait"></canvas>
+                <div id="tx-target-text">
+                    <p class="tx-address-hex">Target</p>
+                    <p class="tx-address-hex word-break-all"><a href="/address/hash/${targetAddress}">${shorten(targetAddress, 22)}</a></p>
+                </div>
+            </div>
+
+            <div class="pure-u-1">
+                <h2>Details</h2>
+                <span class="mini-caption">Internal Id</span>
+                <span class="captioned-text">${internalId}</span>
+                <span class="mini-caption">Block Id Included In</span>
+                <span class="captioned-text"><a href="/block/id/${blockId}">${blockId}</a></span>
+                <span class="mini-caption">Block Number Included In</span>
+                <span class="captioned-text"><a href="/block/number/${blockNumber}">${blockNumber}</a></span>
+                <span class="mini-caption">Tx Index</span>
+                <span class="captioned-text">${txIndex}</span>
+                <span class="mini-caption">Gas</span>
+                <span class="captioned-text">${gasUsed}/${gasProvided}</span>
+                <span class="mini-caption">Gas Price</span>
+                <span class="captioned-text">1 Gas = ${gasPrice.div(ONE_NUKO).mul(new BigNumber(10).pow(3*3))} nanoNUKO</span>
+                <span class="mini-caption">Nonce</span>
+                <span class="captioned-text">${nonce}</span>
+                <span class="mini-caption">Input</span>
+                <span class="captioned-text">${input}</span>
+            </div>
+        </div>`;
+
+            const optFrom = {
+                seed: fromAddress,
+                size: 8,
+                scale: 16
+            };
+
+            const optTarget = {
+                seed: targetAddress,
+                size: 8,
+                scale: 16
+            };
+
+            blockies.render(optFrom, document.getElementById('tx-from-portrait'));
+            blockies.render(optTarget, document.getElementById('tx-target-portrait'));
+
+            addAllAnchorsEvent(div_contents);
         }
     }
 
     /* Transaction View Declaration End*/
+
+    /* Transaction List View Declaration Start */
+
+    const TX_LIST_PAGINATION_BUTTON_LIMIT = 9;
+
+    class ViewTransactionList extends View {
+
+        constructor(key, value, pageNumber) {
+            super();
+            this.targetKey = key;
+            this.targetValue = value;
+            this.pageNumber = pageNumber;
+        }
+
+        getTitle() {
+            return `Page ${this.pageNumber} Txs of ${this.targetKey.substr(0, this.targetKey.indexOf('-'))} ${this.targetValue}`;
+        }
+
+        open() {
+            const baseURL = `/${this.targetKey.replace('-', '/')}/${this.targetValue}`;
+
+            const linkSupplier = (pageNumber) => {
+                return `${baseURL}/txs/${pageNumber}`;
+            };
+
+            requestService.connectAndRequest('transaction-list', [this.targetKey, this.targetValue, this.pageNumber], (content) => {
+                const pageReq = content[0];
+                const lastPageNumber = content[1];
+                const discoveredRows = content[2];
+                const serverRowLimit = content[3];
+
+                if (this.targetKey === 'address-hash') {
+                    let tableBodyHTML = '';
+
+                    for (const elem of pageReq) {
+                        const txType = elem[0];
+                        const txHash = elem[1];
+                        const blockNumber = elem[2];
+                        const timestamp = elem[3];
+                        const fromAddr = elem[4];
+                        const targetAddr = elem[5];
+                        const value = new BigNumber(elem[6]);
+
+                        const txTypeHumanized = ViewTransactionList.humanizeTxType(txType);
+                        const txTypeIcon = ViewTransactionList.getIconFor(txType);
+                        const cssTypeCode = txType.toLowerCase().replace('_', '-');
+                        const capLoweredValue = this.targetValue.toLowerCase();
+                        const fromAddrHTML = (fromAddr === capLoweredValue) ? 'This address' : `<a href="/address/hash/${fromAddr}">${shorten(fromAddr, 20)}</a>`;
+                        const targetAddrHTML = (targetAddr === capLoweredValue) ? 'This address' : `<a href="/address/hash/${targetAddr}">${shorten(targetAddr, 20)}</a>`;
+                        const valueWithDecimal = value.div(ONE_NUKO);
+
+                        tableBodyHTML += `<tr><td><a href="/block/number/${blockNumber}">${blockNumber}</a> (${humanizeUnixEpochDiffFromNow(timestamp)})</td>
+<td><a href="/transaction/hash/${txHash}"><span class="tx-list-hexprefix tx-list-highlight-${cssTypeCode}">0x</span>${shorten(txHash.substr(2), 15)}</a></td>
+<td>${txTypeHumanized}</td><td><span title="${valueWithDecimal} NUKO">${valueWithDecimal.round(2)} NUKO</span></td><td>${fromAddrHTML}</td>
+<td><span class="tx-list-coloring-${cssTypeCode}">${txTypeIcon}</span>${targetAddrHTML}</td></tr>`;
+                    }
+
+                    let rowCountHTML;
+                    let warning;
+                    if (discoveredRows > serverRowLimit) {
+                        rowCountHTML = `${serverRowLimit}+`;
+                        warning = "<p>⚠This address's transactions are too many and results are limited by server</p>";
+                    } else {
+                        rowCountHTML = discoveredRows.toString();
+                        warning = '';
+                    }
+
+                    div_contents.innerHTML = `<h1>Address <a href="${baseURL}">${this.getSourceParentName()}</a>'s transactions (${rowCountHTML})</h1>
+        ${warning}
+        ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}
+        <table id="tx-list-table" class="pure-table pure-table-striped">
+            <thead><tr><th>Time</th><th>Hash</th><th>Type</th><th>Value</th><th>From</th><th>Target</th></tr></thead>
+            <tbody>
+                ${tableBodyHTML}
+            </tbody>
+        </table>
+    ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}`;
+
+                } else if (this.targetKey === 'block-hash' || this.targetKey === 'block-number' || this.targetKey === 'block-id') {
+
+                    let tableBodyHTML = '';
+
+                    for (const elem of pageReq) {
+                        const txType = elem[0];
+                        const txHash = elem[1];
+                        const fromAddr = elem[2];
+                        const targetAddr = elem[3];
+                        const value = new BigNumber(elem[4]);
+
+                        const txTypeHumanized = humanizeTxType(txType);
+                        const txTypeIcon = getTxIconFor(txType);
+                        const cssTypeCode = txType.toLowerCase().replace('_', '-');
+                        const fromAddrHTML = `<a href="/address/hash/${fromAddr}">${shorten(fromAddr, 20)}</a>`;
+                        const targetAddrHTML = `<a href="/address/hash/${targetAddr}">${shorten(targetAddr, 20)}</a>`;
+                        const valueWithDecimal = value.div(ONE_NUKO);
+
+                        tableBodyHTML += `<tr><td><a href="/transaction/hash/${txHash}"><span class="tx-list-hexprefix tx-list-highlight-${cssTypeCode}">0x</span>${shorten(txHash.substr(2), 15)}</a></td>
+<td>${txTypeHumanized}</td><td><span title="${valueWithDecimal} NUKO">${valueWithDecimal.round(2)} NUKO</span></td><td>${fromAddrHTML}</td>
+<td><span class="tx-list-coloring-${cssTypeCode}">${txTypeIcon}</span>${targetAddrHTML}</td></tr>`;
+                    }
+
+                    let rowCountHTML;
+                    if (discoveredRows > serverRowLimit) {
+                        rowCountHTML = `${serverRowLimit}+`;
+                    } else {
+                        rowCountHTML = discoveredRows.toString();
+                    }
+
+                    div_contents.innerHTML = `<h1>Transactions in Block <a href="${baseURL}">${this.getSourceParentName()}</a> (${rowCountHTML})</h1>
+        ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}
+        <table id="tx-list-table" class="pure-table pure-table-striped">
+            <thead><tr><th>Hash</th><th>Type</th><th>Value</th><th>From</th><th>Target</th></tr></thead>
+            <tbody>
+                ${tableBodyHTML}
+            </tbody>
+        </table>
+    ${generatePagination('tx-list-pagination-top', TX_LIST_PAGINATION_BUTTON_LIMIT, this.pageNumber, lastPageNumber, linkSupplier)}`;
+
+                } else {
+                    throw new Error('Unknown key type');
+                }
+
+                addAllAnchorsEvent(div_contents);
+
+                loadingEnd();
+            });
+        }
+
+        getSourceParentName() {
+            if (this.targetKey.split('-')[1] === 'number') {
+                return `#${this.targetValue}`;
+            }
+
+            return this.targetValue;
+        }
+    }
+
+    /* Transaction List View Declaration End */
 
     /* Initialization Start */
 
