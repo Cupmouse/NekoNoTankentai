@@ -129,9 +129,8 @@ public class TransactionListRequestHandler implements RequestHandler<Transaction
                     "SELECT COUNT(*) FROM (" +
                             "SELECT 1 FROM transactions " +
                             "LEFT JOIN blocks ON blocks.internal_id = transactions.block_id " +
-                            "LEFT JOIN addresses AS a1 ON a1.internal_id = transactions.from_id " +
-                            "LEFT JOIN addresses AS a2 ON a2.internal_id = transactions.to_id " +
-                            "WHERE (a1.address = UNHEX(?) OR to_id = a2.address = UNHEX(?)) AND blocks.forked = 0 " +
+                            "WHERE (from_id = (SELECT addresses.internal_id FROM addresses WHERE addresses.address = UNHEX(?)) " +
+                            "OR to_id = (SELECT addresses.internal_id FROM addresses WHERE addresses.address = UNHEX(?))) AND blocks.forked = 0 " +
                             "LIMIT ?) AS t");
 
             prpstmt.setString(1, addressHash);
